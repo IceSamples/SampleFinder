@@ -55,6 +55,18 @@ async function mapLimit(items, limit, fn) {
   return out;
 }
 
+// Request IDs are published as the bare request code only (e.g. C_2026_015). Anything the
+// database appends after the code (requester names, institutions, project notes) is dropped
+// so it never reaches the public file. A value that doesn't start with a code is dropped too.
+const REQUEST_CODE = /^C_\d{4}_\d{3}/;
+const droppedRequestIds = new Set();
+function requestCode(value) {
+  if (value == null || String(value).trim() === '') return null;
+  const m = String(value).trim().match(REQUEST_CODE);
+  if (!m) { droppedRequestIds.add(String(value)); return null; }
+  return m[0];
+}
+
 const byText = (a, b) => (a ?? '').toString().localeCompare((b ?? '').toString(), 'en', { numeric: true });
 
 console.log('Reading core list…');
@@ -85,10 +97,15 @@ for (const { s, subs } of detail) {
   if (subs.length !== (s.subsample_count ?? 0)) {
     console.warn(`  warning: ${s.record_id} lists ${s.subsample_count} subsamples but ${subs.length} came back`);
   }
-  for (const sub of subs) subsamples.push({ record_id: s.record_id, core_id: s.core_id, ...sub });
+  for (const sub of subs) subsamples.push({ record_id: s.record_id, core_id: s.core_id, ...sub, request_id: requestCode(sub.request_id) });
 }
 subsamples.sort((a, b) => byText(a.core_id, b.core_id) || byText(a.record_id, b.record_id) || byText(a.subsample_id, b.subsample_id));
 console.log(`  ${subsamples.length} subsamples                    `);
+console.log(`  request codes: ${[...new Set(subsamples.map(s => s.request_id).filter(Boolean))].sort().join(', ') || '(none)'}`);
+if (droppedRequestIds.size) {
+  console.warn(`  warning: ${droppedRequestIds.size} request value(s) did not start with a C_YYYY_NNN code and were left out of the snapshot:`);
+  for (const v of droppedRequestIds) console.warn(`    - ${v}`);
+}
 
 // One record per line so changes show up as readable diffs in git.
 const lines = (rows) => '[\n' + rows.map(r => '  ' + JSON.stringify(r)).join(',\n') + '\n]';
