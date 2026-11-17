@@ -1,0 +1,867 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>COLDEX Sample Finder</title>
+
+  <style>
+    :root { --gap: 10px; --pad: 12px; --radius: 12px; }
+
+    body {
+      font: 16px/1.35 system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      margin: 0;
+      background: #f8fafc;
+      color: #0f172a;
+    }
+
+    .wrap { max-width: 1150px; margin: 0 auto; padding: 28px; }
+
+    h1 { font-size: 22px; margin: 0 0 18px; }
+
+    .card {
+      background: #ffffff;
+      border: 1px solid #e2e8f0;
+      border-radius: var(--radius);
+      padding: var(--pad);
+      box-shadow: 0 4px 10px rgba(0,0,0,.05);
+    }
+
+    /* --- Instruction header --- */
+    .app-header { margin-bottom: 16px; font-size: 15px; color: #334155; line-height: 1.5; }
+    .app-header strong { color: #1e3a8a; }
+
+    /* --- Layout switcher --- */
+    .switcher { display: flex; gap: 8px; margin-bottom: 12px; }
+    .switcher button {
+      border-radius: 999px; padding: 8px 16px; border: 1px solid #cbd5e1;
+      background: #ffffff; cursor: pointer; font-weight: 600; color: #475569;
+    }
+    .switcher button.active { background: #2563eb; border-color: #2563eb; color: #ffffff; }
+
+    .option-note { font-size: 13px; color: #64748b; margin-bottom: 12px; min-height: 1em; }
+
+    /* --- Map layout --- */
+    .map-layout { position: relative; height: 620px; overflow: hidden; border-radius: var(--radius); }
+    .map-pane {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      overflow: hidden;
+    }
+    .map-hint { position: absolute; top: 12px; left: 16px; z-index: 2; font-size: 12px; color: #64748b; background: rgba(255,255,255,.85); padding: 4px 10px; border-radius: 999px; border: 1px solid #e2e8f0; }
+    .map-toolbar { position: absolute; top: 12px; right: 16px; z-index: 2; display: flex; flex-direction: column; gap: 6px; }
+    .map-toolbar button { width: 34px; height: 34px; padding: 0; font-size: 16px; line-height: 1; cursor: not-allowed; opacity: .55; }
+
+    .map-placeholder {
+      flex: 1; margin: 12px; border-radius: var(--radius); border: 1px solid #e2e8f0;
+      background: #eef2f7;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      overflow: hidden;
+    }
+    .map-placeholder img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
+    .map-placeholder-inner { color: #475569; font-size: 15px; }
+    .map-placeholder-inner .muted { display: block; margin-top: 6px; font-size: 13px; }
+
+    /* --- Bottom drawer --- */
+    .table-pane {
+      position: absolute; left: 12px; right: 12px; bottom: 12px;
+      background: #ffffff; border: 1px solid #e2e8f0; border-radius: var(--radius);
+      box-shadow: 0 -6px 16px rgba(0,0,0,.08);
+      transform: translateY(calc(100% - 52px));
+      transition: transform .25s ease;
+      max-height: 80%; display: flex; flex-direction: column; z-index: 3;
+    }
+    .table-pane.expanded { transform: translateY(0); }
+    .drawer-handle {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 16px; cursor: pointer; font-weight: 600; user-select: none;
+    }
+    .drawer-handle .chev { transition: transform .2s ease; }
+    .table-pane.expanded .drawer-handle .chev { transform: rotate(180deg); }
+    .table-head { padding: 0 16px 8px; }
+    .count span { color: #64748b; font-weight: 400; }
+    .table-scroll { overflow: auto; padding: 0 16px 16px; }
+
+    /* --- Shared table / control styles --- */
+    .grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: var(--gap); }
+    .grid > div { display: flex; flex-direction: column; }
+    .col-span-2 { grid-column: span 2; }
+
+    label { font-size: 12px; color: #475569; margin-bottom: 6px; letter-spacing: .2px; }
+
+    input, select, button {
+      border-radius: 10px; border: 1px solid #cbd5e1; background: #ffffff;
+      color: #0f172a; padding: 10px 12px; font: inherit;
+    }
+    select { min-width: 220px; }
+    #coreId { width: 100%; min-height: 8.5em; }
+    select[multiple] { min-width: 260px; }
+    input::placeholder { color: #94a3b8; }
+
+    .actions { display: flex; gap: var(--gap); align-items: center; }
+    .btn { cursor: pointer; font-weight: 600; transition: background .15s, color .15s, border-color .15s; }
+    .btn-primary { background: #2563eb; border-color: #2563eb; color: #ffffff; }
+    .btn-primary:hover { background: #1d4ed8; }
+    .btn-ghost { background: #f1f5f9; border-color: #e2e8f0; color: #334155; }
+    .btn-ghost:hover { background: #e2e8f0; }
+
+    .muted { color: #64748b; font-size: 13px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid #e2e8f0; vertical-align: top; }
+    th { position: sticky; top: 0; background: #f1f5f9; z-index: 1; }
+
+    .table-wrap { overflow: auto; max-height: 70vh; border-radius: 10px; border: 1px solid #e2e8f0; }
+
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #cbd5e1; font-size: 12px; color: #0f172a; background: #f1f5f9; }
+
+    .foot { display: flex; justify-content: space-between; align-items: center; margin-top: var(--gap); }
+
+    .error { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; padding: 10px 12px; border-radius: 10px; margin-top: 10px; display: none; }
+
+    .core-controls { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .core-controls .btn { padding: 6px 10px; }
+  </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+</head>
+<body>
+  <div class="wrap">
+    <h1>COLDEX Sample Finder</h1>
+
+    <div class="card app-header">
+      <p>
+        To learn more about COLDEX ice cores, visit the
+        <strong><a href="https://coldex.org/ice-core-information" target="_blank" rel="noopener noreferrer">COLDEX ice core information page</a></strong>.
+        To request samples, follow instructions
+        <strong><a href="https://coldex.org/request-samples" target="_blank" rel="noopener noreferrer">here</a></strong>.
+        This database is updated in coordination with the National Ice Core Facility after each field season and again after each CPL.
+        Please contact the data manager if you see any errors.
+        <br><br>
+        <strong>How to use:</strong> Select one or more core IDs (hold Cmd/Ctrl to select multiple).
+        Optionally set depth filters and choose a sample status.
+        Click <strong>Search</strong> to view matching results, or <strong>Download CSV</strong> to export your data.
+        Click on Record ID or Core ID buttons for subsample information and core metadata.
+      </p>
+    </div>
+
+    <div class="switcher" role="tablist" aria-label="Layout option">
+      <button data-layout="map" class="active" role="tab" aria-selected="true" type="button">Interactive Map</button>
+      <button data-layout="finder" role="tab" aria-selected="false" type="button">Sample Finder</button>
+    </div>
+
+    <div class="option-note" id="optionNote"></div>
+
+    <div class="stage" id="stage" data-layout="map">
+
+      <!-- ===== Map layout (placeholder map + bottom drawer) ===== -->
+      <div class="map-layout" id="mapLayout">
+        <div class="map-pane card" id="mapPane">
+          <div class="map-hint">Placeholder — Allan Hills field area</div>
+          <div class="map-toolbar">
+            <button id="zoomIn" title="Interactive zoom coming soon" disabled>+</button>
+            <button id="zoomOut" title="Interactive zoom coming soon" disabled>−</button>
+            <button id="zoomReset" title="Interactive zoom coming soon" disabled>⤢</button>
+          </div>
+          <div class="map-placeholder">
+            <img src="allan-hills-map.png" alt="Allan Hills field area map with core drill site locations" />
+          </div>
+        </div>
+
+        <div class="table-pane" id="tablePane">
+          <div class="drawer-handle" id="drawerHandle">
+            <span>🧊 <span id="drawerCount">0</span> ice cores — view table</span>
+            <span class="chev">▲</span>
+          </div>
+          <div class="table-head">
+            <div class="count">Ice cores <span id="coreCountLabel">(0)</span></div>
+          </div>
+          <div class="table-scroll">
+            <table class="core-table" id="coreTable">
+              <thead>
+                <tr id="coreTableHead"></tr>
+              </thead>
+              <tbody id="coreTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ===== Sample Finder layout (existing search UI) ===== -->
+      <div class="finder-layout" id="finderLayout" style="display:none;">
+        <div class="card" style="margin-bottom:16px;">
+          <form id="searchForm">
+            <div class="grid">
+              <div class="col-span-2">
+                <label for="coreId">Core ID <span id="coreCountBadge" class="pill" style="margin-left:6px;">—</span></label>
+                <select id="coreId" name="coreId" multiple></select>
+                <div class="core-controls">
+                  <button id="coreSelectAllBtn" class="btn btn-ghost" type="button" title="Select all cores">All</button>
+                  <button id="coreClearBtn" class="btn btn-ghost" type="button" title="Clear selection">Clear</button>
+                  <button id="coreRefreshBtn" class="btn btn-ghost" type="button" title="Refresh core list">↻</button>
+                  <span class="muted" style="margin-left:6px;">Tip: hold Cmd/Ctrl to select multiple.</span>
+                </div>
+              </div>
+
+              <div>
+                <label for="minDepth">Min depth (m)</label>
+                <input id="minDepth" name="minDepth" type="number" step="0.01" placeholder="optional" />
+              </div>
+              <div>
+                <label for="maxDepth">Max depth (m)</label>
+                <input id="maxDepth" name="maxDepth" type="number" step="0.01" placeholder="optional" />
+              </div>
+              <div>
+                <label for="status">Status</label>
+                <select id="status" name="status">
+                  <option value="">(ignore)</option>
+                  <option value="available" selected>available</option>
+                  <option value="consumed">consumed</option>
+                </select>
+              </div>
+              <div class="actions" style="align-self:end;">
+                <button id="runBtn" class="btn btn-primary" type="submit">Search</button>
+                <button id="resetBtn" class="btn btn-ghost" type="button">Reset</button>
+              </div>
+              <div class="actions" style="align-self:end; justify-content:flex-end;">
+                <button id="csvBtn" class="btn btn-ghost" type="button" title="Download CSV">Download CSV</button>
+              </div>
+            </div>
+            <div id="err" class="error"></div>
+          </form>
+          <div class="foot">
+            <div id="count" class="muted">0 results</div>
+            <div class="muted">Depth filters include any sample overlapping the window.</div>
+          </div>
+        </div>
+
+        <div class="table-wrap card">
+          <table id="tbl">
+            <thead>
+              <tr>
+                <th>Record ID</th>
+                <th>Core ID</th>
+                <th>Section #</th>
+                <th>Top (m)</th>
+                <th>Bottom (m)</th>
+                <th>Length (m)</th>
+                <th>Subsampled?</th>
+                <th>Status</th>
+                <th>Notes</th>
+              </tr>
+            </thead>
+            <tbody id="tbody"><tr><td colspan="9" class="muted">Run a search…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="detailModal" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.5); z-index:50;">
+    <div id="detailCard" class="card" style="max-width:800px; width:95%; max-height:85vh; overflow:auto;">
+      <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:8px;">
+        <h2 id="detailTitle" style="margin:0; font-size:18px;">Sample Detail</h2>
+        <button id="detailClose" class="btn btn-ghost" type="button">Close</button>
+      </div>
+      <div id="detailBody" class="muted">Loading…</div>
+    </div>
+  </div>
+
+  <script>
+    // === 1) CONFIG =========================================================
+    const SUPABASE_URL = 'https://qkmxlmpotcsfxroxbnir.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFrbXhsbXBvdGNzZnhyb3hibmlyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg2NjUwMjUsImV4cCI6MjA3NDI0MTAyNX0.v3_MMFUjsGZUd5qgUX0k31xCz0Syi9syEnY_C-QZouU';
+    const RPC_SINGLE = 'search_samples';
+    const RPC_MULTI  = 'search_samples_multi';
+    // ======================================================================
+
+    const client   = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    window.client  = client;
+
+    function esc(s) {
+      return (s ?? '').toString()
+        .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+    }
+
+    // === Layout switcher (Interactive Map <-> Sample Finder) ==============
+    const switcherBtns = document.querySelectorAll('.switcher button');
+    const stage         = document.getElementById('stage');
+    const mapLayout      = document.getElementById('mapLayout');
+    const finderLayout   = document.getElementById('finderLayout');
+    const optionNote     = document.getElementById('optionNote');
+
+    const layoutNotes = {
+      map: 'Placeholder map of the Allan Hills field area. Interactive pan/zoom and live core pins are coming soon.',
+      finder: 'Search the sample database directly using the filters below.'
+    };
+
+    function setLayout(layout) {
+      stage.dataset.layout = layout;
+      switcherBtns.forEach(b => {
+        const active = b.dataset.layout === layout;
+        b.classList.toggle('active', active);
+        b.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
+      mapLayout.style.display    = layout === 'map'    ? '' : 'none';
+      finderLayout.style.display = layout === 'finder' ? '' : 'none';
+      optionNote.textContent = layoutNotes[layout] || '';
+    }
+
+    switcherBtns.forEach(b => b.addEventListener('click', () => setLayout(b.dataset.layout)));
+    setLayout('map');
+
+    // === Bottom drawer (core metadata table) ===============================
+    const tablePane   = document.getElementById('tablePane');
+    const drawerHandle = document.getElementById('drawerHandle');
+
+    drawerHandle.addEventListener('click', () => tablePane.classList.toggle('expanded'));
+
+    // Single source of truth for the drawer table's columns — reorder, add,
+    // or remove entries here and both the header and rows follow.
+    const coreTableColumns = [
+      {
+        label: 'Core',
+        render: (c) => `
+          <button class="pill" data-core-id="${esc(c.core_code)}"
+                  style="cursor:pointer; background:none; border:1px solid #2563eb;">
+            ${esc(c.core_code)}
+          </button>
+        `
+      },
+      { label: 'Oldest age', render: (c) => c.oldest_age != null ? Number(c.oldest_age).toLocaleString('en-US') : '' },
+      { label: 'Max depth (m)', render: (c) => c.Maximum_Depth ?? '' },
+      { label: 'Drill type', render: (c) => esc(c.drill_type) },
+      { label: 'Drill diameter (in)', render: (c) => esc(c['Drill Diameter']) },
+    ];
+
+    function renderCoreTableHead() {
+      document.getElementById('coreTableHead').innerHTML =
+        coreTableColumns.map(col => `<th>${esc(col.label)}</th>`).join('');
+    }
+    renderCoreTableHead();
+
+    function renderCoreTable(cores) {
+      const tb = document.getElementById('coreTableBody');
+      const colCount = coreTableColumns.length;
+
+      if (!cores || cores.length === 0) {
+        tb.innerHTML = `<tr><td class="muted" colspan="${colCount}">No core metadata found.</td></tr>`;
+      } else {
+        tb.innerHTML = cores.map(c => `
+          <tr>${coreTableColumns.map(col => `<td>${col.render(c)}</td>`).join('')}</tr>
+        `).join('');
+      }
+
+      document.getElementById('drawerCount').textContent = cores.length;
+      document.getElementById('coreCountLabel').textContent = `(${cores.length})`;
+    }
+
+    async function loadCoreTable() {
+      const tb = document.getElementById('coreTableBody');
+      const colCount = coreTableColumns.length;
+      tb.innerHTML = `<tr><td class="muted" colspan="${colCount}">Loading…</td></tr>`;
+
+      const { data, error } = await client.rpc('get_allan_hills_cores');
+      if (error) {
+        console.error('get_allan_hills_cores failed', error);
+        tb.innerHTML = `<tr><td class="error" style="display:table-cell;" colspan="${colCount}">Error: ${esc(error.message)}</td></tr>`;
+        return;
+      }
+
+      const cores = (data ?? [])
+        .filter(c => c.COLDEX === true)
+        .sort((a, b) => (a.core_code || '').localeCompare(b.core_code || ''));
+      renderCoreTable(cores);
+    }
+    loadCoreTable();
+
+    document.getElementById('coreTableBody').addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-core-id]');
+      if (btn) showCoreDetail(btn.getAttribute('data-core-id'));
+    });
+
+    // === Sample Finder (existing search UI) ================================
+    const form     = document.getElementById('searchForm');
+    const runBtn   = document.getElementById('runBtn');
+    const resetBtn = document.getElementById('resetBtn');
+    const csvBtn   = document.getElementById('csvBtn');
+    const tbody    = document.getElementById('tbody');
+    const countEl  = document.getElementById('count');
+    const errEl    = document.getElementById('err');
+
+    const coreSelect        = document.getElementById('coreId');
+    const coreSelectAllBtn  = document.getElementById('coreSelectAllBtn');
+    const coreClearBtn      = document.getElementById('coreClearBtn');
+    const coreRefreshBtn    = document.getElementById('coreRefreshBtn');
+    const coreCountBadge    = document.getElementById('coreCountBadge');
+
+    let lastResults = [];
+
+    function showError(msg){ errEl.textContent = msg; errEl.style.display = 'block'; }
+    function clearError(){ errEl.textContent = ''; errEl.style.display = 'none'; }
+
+    function renderRows(rows) {
+      tbody.innerHTML = '';
+      if (!rows || rows.length === 0) {
+        tbody.innerHTML = '<tr><td class="muted" colspan="9">No results.</td></tr>';
+        return;
+      }
+
+      for (const r of rows) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>
+            <button class="pill" data-record-id="${esc(r.record_id)}"
+                    style="cursor:pointer; background:none; border:1px solid #2b356e;">
+              ${esc(r.record_id)}
+            </button>
+          </td>
+          <td>
+            <button class="pill" data-core-id="${esc(r.core_id)}"
+                    style="cursor:pointer; background:none; border:1px solid #2563eb;">
+              ${esc(r.core_id)}
+            </button>
+          </td>
+            <td>${esc(r.section_number)}</td>
+            <td>${r.top_depth_m ?? ''}</td>
+            <td>${r.bottom_depth_m ?? ''}</td>
+            <td>${r.length_m ?? ''}</td>
+            <td>${r.has_subsamples ? 'Yes' : 'No'}</td>
+            <td>${esc(r.status ?? '')}</td>
+            <td>${esc(r.notes ?? '')}</td>
+        `;
+        tbody.appendChild(tr);
+      }
+    }
+
+    function toCSV(rows) {
+      const cols = [
+        'record_id','core_id','section_number','top_depth_m','bottom_depth_m',
+        'length_m','has_subsamples','subsample_count','status','notes'
+      ];
+      const header = cols.join(',');
+      const lines = rows.map(r =>
+        cols.map(c => {
+          let v = r[c];
+          if (v == null) v = '';
+          v = String(v);
+          return /[",\n]/.test(v) ? `"${v.replaceAll('"','""')}"` : v;
+        }).join(',')
+      );
+      return [header, ...lines].join('\n');
+    }
+
+    function downloadCSV(rows) {
+      if (!rows || rows.length === 0) return;
+      const blob = new Blob([toCSV(rows)], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'coldex_available_samples.csv';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function overlaps(row, min, max) {
+      if (min == null && max == null) return true;
+      const top = Number(row.top_depth_m);
+      const bot = Number(row.bottom_depth_m);
+      if (!Number.isFinite(top) || !Number.isFinite(bot)) return false;
+      if (min != null && bot < min) return false;
+      if (max != null && top > max) return false;
+      return true;
+    }
+
+    function getSelectedCores() {
+      return Array.from(coreSelect?.selectedOptions ?? [])
+        .map(o => o.value)
+        .filter(Boolean);
+    }
+
+    async function runSearch(ev) {
+      ev?.preventDefault();
+      clearError();
+      runBtn.disabled = true;
+      runBtn.textContent = 'Searching…';
+
+      const parseNum = (v) => {
+        const t = (v ?? '').trim();
+        if (t === '') return null;
+        const n = Number(t);
+        return Number.isFinite(n) ? n : null;
+      };
+      const minDepth = parseNum(document.getElementById('minDepth').value);
+      const maxDepth = parseNum(document.getElementById('maxDepth').value);
+      const rawStatus = document.getElementById('status').value;
+      const status = rawStatus === '' ? null : rawStatus;
+
+      const selectedCores = getSelectedCores();
+      const toNull = v => (v === undefined || v === '' ? null : v);
+
+      const rpcMin = (minDepth ?? null);
+      const rpcMax = (maxDepth ?? null);
+      const rpcStatus = (status ?? null);
+
+      let data, error;
+
+      if (selectedCores.length <= 1) {
+        const singleCore = selectedCores.length === 1 ? selectedCores[0] : null;
+        ({ data, error } = await client.rpc(RPC_SINGLE, {
+          p_core_id:   toNull(singleCore),
+          p_min_depth: rpcMin,
+          p_max_depth: rpcMax,
+          p_status:    rpcStatus
+        }));
+      } else {
+        ({ data, error } = await client.rpc(RPC_MULTI, {
+          p_core_ids:  selectedCores,
+          p_min_depth: rpcMin,
+          p_max_depth: rpcMax,
+          p_status:    rpcStatus
+        }));
+      }
+
+      runBtn.disabled = false;
+      runBtn.textContent = 'Search';
+
+      if (error) {
+        showError(error.message || 'Unknown error');
+        console.error('RPC error', error);
+        return;
+      }
+
+      const results = Array.isArray(data)
+        ? data.filter(r => overlaps(r, minDepth, maxDepth))
+        : [];
+
+      lastResults = results;
+      countEl.textContent = `${results.length} result${results.length === 1 ? '' : 's'}`;
+      renderRows(results);
+    }
+
+    // === Core codes cache + loader =======================================
+    const CORE_CACHE_KEY = 'coreCodes:v2';
+    const CORE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
+
+    function readCoreCache() {
+      try {
+        const raw = localStorage.getItem(CORE_CACHE_KEY);
+        if (!raw) return null;
+        const { codes, ts } = JSON.parse(raw);
+        if (!Array.isArray(codes) || typeof ts !== 'number') return null;
+        const fresh = (Date.now() - ts) < CORE_CACHE_TTL_MS;
+        return { codes, fresh };
+      } catch { return null; }
+    }
+
+    function writeCoreCache(codes) {
+      try { localStorage.setItem(CORE_CACHE_KEY, JSON.stringify({ codes, ts: Date.now() })); }
+      catch {}
+    }
+
+    function fillCoreSelect(codes) {
+      const prev = new Set(getSelectedCores());
+      coreSelect.innerHTML = '';
+      for (const code of codes) {
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = code;
+        if (prev.has(code)) opt.selected = true;
+        coreSelect.appendChild(opt);
+      }
+      coreSelect.multiple = true;
+      coreSelect.size = Math.max(6, Math.min(10, coreSelect.options.length));
+      coreSelect.disabled = false;
+      if (coreCountBadge) coreCountBadge.textContent = codes.length;
+    }
+
+    async function fetchCoreCodesNetwork() {
+      try {
+        const { data, error } = await client.from('core_codes').select('core_code').order('core_code', { ascending: true });
+        if (error) throw error;
+        const codes = (data ?? []).map(r => (r.core_code || '').trim()).filter(Boolean);
+        if (codes.length) return codes;
+      } catch (e) { console.warn('View core_codes failed:', e.message || e); }
+
+      try {
+        const { data, error } = await client.rpc('coldex_get_core_ids');
+        if (error) throw error;
+        const codes = (data ?? []).map(r => (r.core_id || '').trim()).filter(Boolean);
+        if (codes.length) return codes;
+      } catch (e) { console.warn('RPC coldex_get_core_ids failed:', e.message || e); }
+
+      try {
+        const { data, error } = await client.schema('coldex').from('cores').select('core_code').order('core_code', { ascending: true });
+        if (error) throw error;
+        const codes = (data ?? []).map(r => (r.core_code || '').trim()).filter(Boolean);
+        if (codes.length) return codes;
+      } catch (e) { console.warn('Direct coldex.cores read failed:', e.message || e); }
+
+      return [];
+    }
+
+    async function populateCoreDropdown() {
+      coreSelect.disabled = true;
+      coreSelect.innerHTML = '<option value="">Loading…</option>';
+
+      const cached = readCoreCache();
+      if (cached?.codes?.length) {
+        fillCoreSelect(cached.codes);
+      }
+
+      const liveCodes = await fetchCoreCodesNetwork();
+      if (liveCodes.length) {
+        const cachedStr = JSON.stringify((cached?.codes) || []);
+        const liveStr   = JSON.stringify(liveCodes);
+        if (cachedStr !== liveStr) {
+          fillCoreSelect(liveCodes);
+          writeCoreCache(liveCodes);
+        } else if (!cached?.fresh) {
+          writeCoreCache(liveCodes);
+        }
+      } else if (!cached?.codes?.length) {
+        coreSelect.innerHTML = '<option value="">(No cores found)</option>';
+        coreSelect.disabled = false;
+      }
+    }
+
+    // ---------- Detail modal ----------
+    function $id(id){ return document.getElementById(id); }
+    function openDetail(){ const m=$id('detailModal'); if (m) m.style.display='flex'; }
+    function closeDetail(){ const m=$id('detailModal'); if (m) m.style.display='none'; }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      const modal   = $id('detailModal');
+      const closeBn = $id('detailClose');
+      if (modal)   modal.addEventListener('click', (e) => { if (e.target === modal) closeDetail(); });
+      if (closeBn) closeBn.addEventListener('click', closeDetail);
+    });
+
+    tbody.addEventListener('click', async (e) => {
+      const recordBtn = e.target.closest('[data-record-id]');
+      if (recordBtn) {
+        const recordId = recordBtn.getAttribute('data-record-id');
+        await showSampleDetail(recordId);
+        return;
+      }
+      const coreBtn = e.target.closest('[data-core-id]');
+      if (coreBtn) {
+        const coreCode = coreBtn.getAttribute('data-core-id');
+        await showCoreDetail(coreCode);
+        return;
+      }
+    });
+
+    async function showSampleDetail(recordId) {
+      const title = $id('detailTitle');
+      const body  = $id('detailBody');
+      if (title) title.textContent = `Sample ${recordId}`;
+      if (body)  body.innerHTML = 'Loading…';
+      openDetail();
+
+      const { data, error } = await client.rpc('get_sample_detail', { p_record_id: recordId });
+      if (error) {
+        console.error(error);
+        if (body) body.innerHTML = `<div class="error" style="display:block">Error: ${esc(error.message)}</div>`;
+        return;
+      }
+      if (!data || data.length === 0) {
+        if (body) body.innerHTML = `<div class="muted">No detail found.</div>`;
+        return;
+      }
+
+      const row  = data[0];
+      const subs = Array.isArray(row.subsamples) ? row.subsamples : [];
+
+      const subsRows = subs.map(s => `
+        <tr>
+          <td>${esc(s.subsample_id)}</td>
+          <td>${s.top_depth_m ?? ''}</td>
+          <td>${s.bottom_depth_m ?? ''}</td>
+          <td>${s.length_m ?? ''}</td>
+          <td>${esc(s.status ?? '')}</td>
+          <td>${esc(s.destination ?? '')}</td>
+          <td>${esc(s.date_sent ?? '')}</td>
+          <td>${esc(s.purpose_notes ?? '')}</td>
+          <td>${esc(s.cut_shape ?? '')}</td>
+          <td>${esc(s.linked_shipment ?? '')}</td>
+          <td>${esc(s.request_id ?? '')}</td>
+        </tr>
+      `).join('');
+
+      const subsTable = subs.length === 0
+        ? '<div class="muted">None</div>'
+        : (
+          '<div class="table-wrap" style="max-height:50vh;">' +
+            '<table>' +
+              '<thead>' +
+                '<tr>' +
+                  '<th>Subsample ID</th>' +
+                  '<th>Top (m)</th>' +
+                  '<th>Bottom (m)</th>' +
+                  '<th>Length (m)</th>' +
+                  '<th>Status</th>' +
+                  '<th>Destination</th>' +
+                  '<th>Date sent</th>' +
+                  '<th>Purpose</th>' +
+                  '<th>Cut shape</th>' +
+                  '<th>Shipment</th>' +
+                  '<th>Request ID</th>' +
+                '</tr>' +
+              '</thead>' +
+              '<tbody>' + subsRows + '</tbody>' +
+            '</table>' +
+          '</div>'
+        );
+
+      const sampleTable = `
+        <div style="display:grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap:12px;">
+          <div class="card">
+            <h3 style="margin-top:0;">Sample</h3>
+            <table>
+              <tr><th style="width:160px;">Record ID</th><td><code class="pill">${esc(recordId)}</code></td></tr>
+              <tr><th>Core ID</th><td>${esc(row.core_id)}</td></tr>
+              <tr><th>Section #</th><td>${esc(row.section_number)}</td></tr>
+              <tr><th>Top (m)</th><td>${row.top_depth_m ?? ''}</td></tr>
+              <tr><th>Bottom (m)</th><td>${row.bottom_depth_m ?? ''}</td></tr>
+              <tr><th>Length (m)</th><td>${row.length_m ?? ''}</td></tr>
+              <tr><th>Status</th><td>${esc(row.status ?? '')}</td></tr>
+              <tr><th>Notes</th><td>${esc(row.notes ?? '')}</td></tr>
+            </table>
+          </div>
+          <div class="card">
+            <h3 style="margin-top:0;">Subsamples <span class="pill">${row.subsample_count ?? 0}</span></h3>
+            ${subsTable}
+          </div>
+        </div>
+      `;
+      if (body) body.innerHTML = sampleTable;
+    }
+
+    // === Core metadata modal =============================================
+    async function showCoreDetail(coreCode) {
+      const title = $id('detailTitle');
+      const body  = $id('detailBody');
+      if (title) title.textContent = `Core ${coreCode}`;
+      if (body)  body.innerHTML = 'Loading…';
+      openDetail();
+
+      let data = null, error = null;
+      try {
+        const resp = await client.rpc('get_core_detail', { p_core_code: coreCode });
+        error = resp.error || null;
+        data  = Array.isArray(resp.data) ? resp.data[0] : null;
+      } catch (e) {
+        error = e;
+      }
+
+      if (error) {
+        console.error(error);
+        if (body) body.innerHTML = `<div class="error" style="display:block">Error: ${esc(error.message || 'Failed to load core metadata')}</div>`;
+        return;
+      }
+      if (!data) {
+        if (body) body.innerHTML = `<div class="muted">No metadata found for ${esc(coreCode)}.</div>`;
+        return;
+      }
+
+      const preferred = [
+        ['core_code','Core ID'],
+        ['site_name','Site'],
+        ['core_uuid','Core UUID'],
+        ['drill_date','Drill date'],
+        ['pi','PI'],
+        ['drill_type','Drill type'],
+        ['latitude_deg','Latitude (deg)'],
+        ['longitude_deg','Longitude (deg)'],
+        ['elevation_m','Elevation (m)'],
+        ['maximum_depth','Maximum depth (m)'],
+        ['oldest_age','Oldest age'],
+        ['notes','Notes']
+      ];
+
+      function fmtVal(key, val) {
+        if (val == null || val === '') return '';
+        if (key === 'oldest_age' && !isNaN(val)) return Number(val).toLocaleString('en-US');
+        return val;
+      }
+
+      const prefRows = preferred
+        .filter(([k]) => k in data && data[k] !== null && data[k] !== '')
+        .map(([k,label]) => `<tr><th style="width:200px;">${esc(label)}</th><td>${esc(fmtVal(k, data[k]))}</td></tr>`)
+        .join('');
+
+      const shownKeys = new Set(preferred.map(([k]) => k));
+      const otherEntries = Object.entries(data)
+        .filter(([k,v]) => !shownKeys.has(k) && v !== null && v !== '' && typeof v !== 'object')
+        .sort(([a],[b]) => a.localeCompare(b));
+
+      const otherRows = otherEntries.length
+        ? otherEntries.map(([k,v]) => `<tr><th>${esc(k)}</th><td>${esc(fmtVal(k, v))}</td></tr>`).join('')
+        : '<tr><td class="muted" colspan="2">No additional fields.</td></tr>';
+
+      const html = `
+        <div class="card" style="margin-bottom:12px;">
+          <h3 style="margin:0 0 8px;">Core Metadata</h3>
+          <table>
+            ${prefRows || '<tr><td class="muted" colspan="2">No standard fields present.</td></tr>'}
+          </table>
+        </div>
+
+        <div class="card">
+          <h3 style="margin:0 0 8px;">All fields</h3>
+          <div class="table-wrap" style="max-height:50vh;">
+            <table>
+              <thead><tr><th style="width:200px;">Field</th><th>Value</th></tr></thead>
+              <tbody>${otherRows}</tbody>
+            </table>
+          </div>
+        </div>
+      `;
+      if (body) body.innerHTML = html;
+    }
+
+    // === Wire up finder controls ===========================================
+    form.addEventListener('submit', runSearch);
+
+    resetBtn.addEventListener('click', () => {
+      form.reset();
+      clearError();
+      for (const opt of coreSelect.options) opt.selected = false;
+      lastResults = [];
+      renderRows([]);
+      countEl.textContent = '0 results';
+    });
+
+    csvBtn.addEventListener('click', () => downloadCSV(lastResults));
+
+    coreSelectAllBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      for (const opt of coreSelect.options) opt.selected = true;
+    });
+
+    coreClearBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      for (const opt of coreSelect.options) opt.selected = false;
+    });
+
+    coreRefreshBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      const b = coreRefreshBtn;
+      b.textContent = '…';
+      b.disabled = true;
+      localStorage.removeItem(CORE_CACHE_KEY);
+      await populateCoreDropdown();
+      b.textContent = '↻';
+      b.disabled = false;
+    });
+
+    document.addEventListener('DOMContentLoaded', async () => {
+      await populateCoreDropdown();
+      coreSelect.multiple = true;
+    });
+  </script>
+</body>
+</html>
