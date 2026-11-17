@@ -57,9 +57,40 @@
       display: flex; align-items: center; justify-content: center; text-align: center;
       overflow: hidden;
     }
-    .map-placeholder img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; }
-    .map-placeholder-inner { color: #475569; font-size: 15px; }
-    .map-placeholder-inner .muted { display: block; margin-top: 6px; font-size: 13px; }
+    .map-placeholder { position: relative; }
+    .map-svg { width: 100%; height: 100%; display: block; }
+
+    /* --- Core hover zones + flag --- */
+    .hotspot { fill: transparent; stroke: transparent; stroke-width: 2; vector-effect: non-scaling-stroke; cursor: pointer; outline: none; }
+    .hotspot:hover, .hotspot:focus, .hotspot.active { fill: rgba(15,23,42,.10); stroke: #0f172a; }
+    .map-tooltip {
+      position: absolute; z-index: 5; display: none; width: 300px; max-width: 92%; max-height: 62%;
+      overflow-y: auto; text-align: left; font-size: 13px; line-height: 1.4; color: #0f172a;
+      background: #ffffff; border: 1px solid #cbd5e1; border-radius: 10px; padding: 10px 12px;
+      box-shadow: 0 8px 24px rgba(15,23,42,.18);
+    }
+    .map-tooltip.show { display: block; }
+    .tt-core + .tt-core { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
+    .tt-id { font-weight: 700; color: #1e3a8a; margin-bottom: 2px; }
+    .tt-row { display: grid; grid-template-columns: 76px 1fr; gap: 8px; }
+    .tt-row dt { color: #64748b; }
+    .tt-row dd { margin: 0; overflow-wrap: anywhere; }
+    .tt-count { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+    .map-dot-nc { fill: #ffac20; stroke: #684c25; stroke-width: 1.3; pointer-events: none; }
+    .map-legend {
+      position: absolute; top: 12px; right: 62px; z-index: 2; font-size: 12px; color: #334155;
+      background: rgba(255,255,255,.92); border: 1px solid #e2e8f0; border-radius: 10px; padding: 6px 10px;
+    }
+    .legend-title { font-weight: 700; color: #0f172a; margin-bottom: 3px; }
+    .legend-row { display: flex; align-items: center; gap: 7px; line-height: 1.6; white-space: nowrap; }
+    .legend-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; border: 1px solid; }
+    .legend-dot.coldex { background: #1848e1; border-color: #08186e; }
+    .legend-dot.noncoldex { background: #ffac20; border-color: #684c25; }
+    .tt-type { display: inline-block; margin-left: 6px; padding: 0 7px; border-radius: 999px; font-size: 11px; font-weight: 600; vertical-align: 1px; border: 1px solid; }
+    .tt-type.coldex { background: #e6edff; border-color: #1848e1; color: #0f2a9c; }
+    .tt-type.noncoldex { background: #fff4e0; border-color: #f59e0b; color: #92400e; }
+    .tt-area { font-size: 15px; font-weight: 700; color: #0f172a; }
+    .tt-area + .tt-count { margin-top: 0; }
 
     /* --- Bottom drawer --- */
     .table-pane {
@@ -156,14 +187,26 @@
       <!-- ===== Map layout (placeholder map + bottom drawer) ===== -->
       <div class="map-layout" id="mapLayout">
         <div class="map-pane card" id="mapPane">
-          <div class="map-hint">Placeholder — Allan Hills field area</div>
+          <div class="map-hint">Allan Hills field area · hover a core location for details</div>
+          <div class="map-legend" aria-label="Map legend">
+            <div class="legend-title">Core type</div>
+            <div class="legend-row"><span class="legend-dot coldex"></span>COLDEX</div>
+            <div class="legend-row"><span class="legend-dot noncoldex"></span>Non-COLDEX</div>
+          </div>
           <div class="map-toolbar">
             <button id="zoomIn" title="Interactive zoom coming soon" disabled>+</button>
             <button id="zoomOut" title="Interactive zoom coming soon" disabled>−</button>
             <button id="zoomReset" title="Interactive zoom coming soon" disabled>⤢</button>
           </div>
-          <div class="map-placeholder">
-            <img src="allan-hills-map.png" alt="Allan Hills field area map with core drill site locations" />
+          <div class="map-placeholder" id="mapStage">
+            <!-- Same pixel space as the image (2954x2133) so hover zones are placed in image coordinates -->
+            <svg class="map-svg" id="mapSvg" viewBox="0 0 2954 2133" preserveAspectRatio="xMidYMid meet"
+                 role="img" aria-label="Allan Hills field area map with core drill site locations">
+              <image href="allan-hills-map.png" x="0" y="0" width="2954" height="2133" />
+              <g id="mapDots"></g>
+              <g id="mapHotspots"></g>
+            </svg>
+            <div class="map-tooltip" id="mapTooltip" role="tooltip"></div>
           </div>
         </div>
 
@@ -291,7 +334,7 @@
     const optionNote     = document.getElementById('optionNote');
 
     const layoutNotes = {
-      map: 'Placeholder map of the Allan Hills field area. Interactive pan/zoom and live core pins are coming soon.',
+      map: 'Map of the Allan Hills field area. Hover over a core location for details; pan/zoom is coming soon.',
       finder: 'Search the sample database directly using the filters below.'
     };
 
@@ -372,7 +415,163 @@
         .filter(c => c.COLDEX === true)
         .sort((a, b) => (a.core_code || '').localeCompare(b.core_code || ''));
       renderCoreTable(cores);
+      renderMapHotspots(data ?? []);
+      renderMapDots(data ?? []);
     }
+
+    // === Map hover zones ===================================================
+    // Positions are in the map image's own pixel space (2954 x 2133). Each zone
+    // covers one dot, or a group of dots too close together to hover separately.
+    // The core details shown in the flag come live from the database by core code.
+    // To add a new core to the map, add its code to the zone covering its dot.
+    // An optional `name` labels a zone in the flag (e.g. 'Cul de Sac').
+    // Cores with no coordinates in the table (2502, 2503, 2512) are placed with ALHIC2401.
+    const MAP_HOTSPOTS = [
+      { x: 1780, y: 184,  r: 34, cores: ['ALHIC2414'] },
+      { x: 1797, y: 334,  r: 34, cores: ['ALHIC2413'] },
+      { x: 1813, y: 454,  r: 34, cores: ['ALHIC2417', 'PICO2303'] },
+      { x: 1820, y: 576,  r: 34, cores: ['ALHIC2412'] },
+      { x: 620,  y: 668,  r: 34, cores: ['ALHIC2514'] },
+      { x: 658,  y: 713,  r: 41, name: 'Cul de Sac', cores: ['ALHIC2301', 'ALHIC2401', 'ALHIC2416', 'ALHIC2502', 'ALHIC2503', 'ALHIC2511', 'ALHIC2512', 'IDDO2302', 'IDDO2303', 'PICO1901', 'PICO2201', 'PICO2202', 'PICO2301'] },
+      { x: 624,  y: 789,  r: 34, cores: ['ALHIC2415'] },
+      { x: 1656, y: 910,  r: 34, cores: ['ALHIC2513'] },
+      { x: 881,  y: 919,  r: 34, name: 'Nunatak', cores: ['ALHIC1902', 'ALHIC2302', 'ALHIC2411', 'IDDO2301'] },
+      { x: 1036, y: 1092, r: 45, name: 'South Slope', cores: ['ALHIC1502', 'ALHIC1503/BIT-58', 'ALHIC1901', 'ALHIC2201', 'ALHIC2501'] },
+      { x: 819,  y: 1153, r: 34, cores: ['ALHIC1501'] },
+      { x: 1426, y: 1431, r: 34, cores: ['PICO2304', 'S13'] },
+      { x: 1378, y: 1509, r: 37, cores: ['ALHIC1903', 'PICO2302', 'S27/S11'] },
+      { x: 1324, y: 1703, r: 47, cores: ['S6', 'S7'] },
+      { x: 1323, y: 1824, r: 58, cores: ['S2', 'S3', 'S4'] },
+      { x: 1338, y: 1903, r: 34, cores: ['S1'] },
+    ];
+
+    // Dots baked into the map image, one entry per cleanly separate dot (image pixel coordinates).
+    // The image paints every dot blue (COLDEX); a dot whose cores are all non-COLDEX gets an
+    // orange dot drawn over it. Where several dots overlap into one blob (e.g. the Cul de Sac and
+    // South Slope groups) they stay blue, since they can't be recoloured individually.
+    const MAP_DOTS = [
+      { x: 1780, y: 184,  cores: ['ALHIC2414'] },
+      { x: 1797, y: 334,  cores: ['ALHIC2413'] },
+      { x: 1813, y: 454,  cores: ['ALHIC2417', 'PICO2303'] },
+      { x: 1820, y: 576,  cores: ['ALHIC2412'] },
+      { x: 665,  y: 714,  cores: ['ALHIC2301', 'ALHIC2401', 'ALHIC2416', 'ALHIC2502', 'ALHIC2503', 'ALHIC2512', 'IDDO2302', 'PICO2201', 'PICO2202', 'PICO2301'] },
+      { x: 649,  y: 725,  cores: ['ALHIC2511', 'PICO1901'] },
+      { x: 624,  y: 789,  cores: ['ALHIC2415'] },
+      { x: 1656, y: 910,  cores: ['ALHIC2513'] },
+      { x: 1050, y: 1078, cores: ['ALHIC2501'] },
+      { x: 819,  y: 1153, cores: ['ALHIC1501'] },
+      { x: 1382, y: 1499, cores: ['S27/S11'] },
+      { x: 1372, y: 1518, cores: ['ALHIC1903', 'PICO2302'] },
+      { x: 1326, y: 1682, cores: ['S7'] },
+      { x: 1322, y: 1724, cores: ['S6'] },
+      { x: 1319, y: 1794, cores: ['S4'] },
+      { x: 1322, y: 1823, cores: ['S3'] },
+      { x: 1329, y: 1856, cores: ['S2'] },
+      { x: 1338, y: 1903, cores: ['S1'] },
+    ];
+
+    function renderMapDots(allRows) {
+      const g = document.getElementById('mapDots');
+      g.innerHTML = '';
+      const isColdex = new Map(allRows.map(c => [c.core_code, c.COLDEX === true]));
+      for (const d of MAP_DOTS) {
+        const known = d.cores.filter(code => isColdex.has(code));
+        if (known.length === 0 || known.some(code => isColdex.get(code))) continue;   // has a COLDEX core: keep blue
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        el.setAttribute('class', 'map-dot-nc');
+        el.setAttribute('cx', d.x);
+        el.setAttribute('cy', d.y);
+        el.setAttribute('r', 9);
+        g.appendChild(el);
+      }
+    }
+
+    const mapStage   = document.getElementById('mapStage');
+    const mapTooltip = document.getElementById('mapTooltip');
+    const mapHotspotsG = document.getElementById('mapHotspots');
+    let tooltipHideTimer = null;
+
+    const dash = (v) => (v == null || v === '') ? '—' : v;
+
+    function tooltipCoreHtml(c) {
+      const depth = c.Maximum_Depth != null ? `${c.Maximum_Depth} m` : null;
+      const diam  = c['Drill Diameter'] != null && c['Drill Diameter'] !== '' ? `${c['Drill Diameter']} in` : null;
+      const age   = c.oldest_age != null ? Number(c.oldest_age).toLocaleString('en-US') : null;
+      return `
+        <div class="tt-core">
+          <div class="tt-id">${esc(c.core_code)}${c.COLDEX === true
+            ? '<span class="tt-type coldex">COLDEX</span>'
+            : '<span class="tt-type noncoldex">Non-COLDEX</span>'}</div>
+          <dl style="margin:0;">
+            <div class="tt-row"><dt>Drill date</dt><dd>${esc(dash(c.drill_date))}</dd></div>
+            <div class="tt-row"><dt>Depth</dt><dd>${esc(dash(depth))}</dd></div>
+            <div class="tt-row"><dt>Diameter</dt><dd>${esc(dash(diam))}</dd></div>
+            <div class="tt-row"><dt>Age</dt><dd>${esc(dash(age))}</dd></div>
+            <div class="tt-row"><dt>Description</dt><dd>${esc(dash(c.notes)).trim()}</dd></div>
+          </dl>
+        </div>`;
+    }
+
+    function showTooltip(el, cores, name) {
+      clearTimeout(tooltipHideTimer);
+      document.querySelectorAll('.hotspot.active').forEach(n => n.classList.remove('active'));
+      el.classList.add('active');
+
+      const title = name ? `<div class="tt-area">${esc(name)}</div>` : '';
+      const count = cores.length > 1 ? `<div class="tt-count">${cores.length} cores${name ? '' : ' at this location'}</div>` : '';
+      mapTooltip.innerHTML = title + count + cores.map(tooltipCoreHtml).join('');
+      mapTooltip.scrollTop = 0;
+      mapTooltip.classList.add('show');
+
+      // Place beside the zone: right of it if there's room, otherwise left; keep inside the map.
+      const zone = el.getBoundingClientRect();
+      const box  = mapStage.getBoundingClientRect();
+      const tw = mapTooltip.offsetWidth, th = mapTooltip.offsetHeight;
+      let left = zone.right - box.left - 2;
+      if (left + tw > box.width - 8) left = zone.left - box.left - tw + 2;
+      left = Math.max(8, Math.min(left, box.width - tw - 8));
+      let top = (zone.top + zone.bottom) / 2 - box.top - th / 2;
+      top = Math.max(8, Math.min(top, box.height - th - 8));
+      mapTooltip.style.left = `${left}px`;
+      mapTooltip.style.top  = `${top}px`;
+    }
+
+    function hideTooltip() {
+      clearTimeout(tooltipHideTimer);
+      tooltipHideTimer = setTimeout(() => {
+        mapTooltip.classList.remove('show');
+        document.querySelectorAll('.hotspot.active').forEach(n => n.classList.remove('active'));
+      }, 180);   // short delay so the pointer can move from the zone onto the flag
+    }
+
+    function renderMapHotspots(allCores) {
+      const byCode = new Map(allCores.map(c => [c.core_code, c]));
+      mapHotspotsG.innerHTML = '';
+
+      for (const h of MAP_HOTSPOTS) {
+        const here = h.cores.map(code => byCode.get(code)).filter(Boolean)
+          .sort((a, b) => (b.COLDEX === true) - (a.COLDEX === true));   // COLDEX cores first
+        if (here.length === 0) continue;   // none of this dot's cores are in the table
+
+        const el = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        el.setAttribute('class', 'hotspot');
+        el.setAttribute('cx', h.x);
+        el.setAttribute('cy', h.y);
+        el.setAttribute('r', h.r);
+        el.setAttribute('tabindex', '0');
+        el.setAttribute('aria-label', (h.name ? h.name + ': ' : '') + here.map(c => c.core_code).join(', '));
+        el.addEventListener('mouseenter', () => showTooltip(el, here, h.name));
+        el.addEventListener('focus',      () => showTooltip(el, here, h.name));
+        el.addEventListener('mouseleave', hideTooltip);
+        el.addEventListener('blur',       hideTooltip);
+        mapHotspotsG.appendChild(el);
+      }
+    }
+
+    mapTooltip.addEventListener('mouseenter', () => clearTimeout(tooltipHideTimer));
+    mapTooltip.addEventListener('mouseleave', hideTooltip);
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') hideTooltip(); });
+
     loadCoreTable();
 
     document.getElementById('coreTableBody').addEventListener('click', (e) => {
