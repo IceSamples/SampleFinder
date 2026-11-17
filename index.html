@@ -72,7 +72,7 @@
     .map-tooltip.show { display: block; }
     .tt-core + .tt-core { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; }
     .tt-id { font-weight: 700; color: #1e3a8a; margin-bottom: 2px; }
-    .tt-row { display: grid; grid-template-columns: 76px 1fr; gap: 8px; }
+    .tt-row { display: grid; grid-template-columns: 88px 1fr; gap: 8px; }
     .tt-row dt { color: #64748b; }
     .tt-row dd { margin: 0; overflow-wrap: anywhere; }
     .tt-count { font-size: 12px; color: #64748b; margin-bottom: 8px; }
@@ -151,9 +151,18 @@
 
     .core-controls { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
     .core-controls .btn { padding: 6px 10px; }
+
+    /* --- Subsamples by core --- */
+    .subs-controls { display: flex; gap: var(--gap); flex-wrap: wrap; align-items: flex-end; }
+    .subs-controls > div { display: flex; flex-direction: column; }
+    .subs-info { margin-top: 12px; font-size: 13px; color: #475569; }
+    .subs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .subs-chip { cursor: pointer; background: #ffffff; border: 1px solid #cbd5e1; color: #0f172a; font-size: 12px; padding: 3px 10px; }
+    .subs-chip:hover { background: #f1f5f9; }
+    .subs-chip.active { background: #2563eb; border-color: #2563eb; color: #ffffff; }
   </style>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <script src="data/coldex-data.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -240,7 +249,6 @@
                 <div class="core-controls">
                   <button id="coreSelectAllBtn" class="btn btn-ghost" type="button" title="Select all cores">All</button>
                   <button id="coreClearBtn" class="btn btn-ghost" type="button" title="Clear selection">Clear</button>
-                  <button id="coreRefreshBtn" class="btn btn-ghost" type="button" title="Refresh core list">↻</button>
                   <span class="muted" style="margin-left:6px;">Tip: hold Cmd/Ctrl to select multiple.</span>
                 </div>
               </div>
@@ -295,9 +303,42 @@
             <tbody id="tbody"><tr><td colspan="9" class="muted">Run a search…</td></tr></tbody>
           </table>
         </div>
+
+        <!-- Subsamples by core -->
+        <div class="card" id="subsCard" style="margin-top:16px;">
+          <h2 style="margin:0 0 4px; font-size:16px;">Subsamples by core</h2>
+          <div class="muted" style="margin-bottom:12px;">Choose a core to see which institutions its subsamples were cut for.</div>
+          <div class="subs-controls">
+            <div>
+              <label for="subsCore">Core</label>
+              <select id="subsCore"><option value="">Select a core…</option></select>
+            </div>
+            <div>
+              <label for="subsDest">Destination</label>
+              <select id="subsDest" disabled><option value="">All destinations</option></select>
+            </div>
+          </div>
+          <div id="subsErr" class="error"></div>
+          <div id="subsInfo" class="subs-info"></div>
+          <div id="subsChips" class="subs-chips"></div>
+          <div class="table-wrap" id="subsTableWrap" style="display:none; margin-top:12px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Destination</th><th>Subsample ID</th><th>Record ID</th>
+                  <th>Top (m)</th><th>Bottom (m)</th><th>Length (m)</th>
+                  <th>Cut shape</th><th>Purpose</th><th>Date sent</th>
+                </tr>
+              </thead>
+              <tbody id="subsBody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
     </div>
+
+    <div class="muted" id="dataStamp" style="margin-top:18px; text-align:center;"></div>
   </div>
 
   <div id="detailModal" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.5); z-index:50;">
@@ -311,19 +352,38 @@
   </div>
 
   <script>
-    // === 1) CONFIG =========================================================
-    const SUPABASE_URL = 'https://qkmxlmpotcsfxroxbnir.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InFrbXhsbXBvdGNzZnhyb3hibmlyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTg2NjUwMjUsImV4cCI6MjA3NDI0MTAyNX0.v3_MMFUjsGZUd5qgUX0k31xCz0Syi9syEnY_C-QZouU';
-    const RPC_SINGLE = 'search_samples';
-    const RPC_MULTI  = 'search_samples_multi';
-    // ======================================================================
+    // === Data (static snapshot) ============================================
+    // Everything comes from data/coldex-data.js, a snapshot of the COLDEX database that
+    // scripts/export-data.mjs regenerates after each database update. There is no live
+    // database connection, so the site can't be paused or hit query limits.
+    const DATA = window.COLDEX_DATA || { generated: null, cores: [], samples: [], subsamples: [] };
+    if (!window.COLDEX_DATA) {
+      document.addEventListener('DOMContentLoaded', () => document.body.insertAdjacentHTML('afterbegin',
+        '<div class="error" style="display:block; margin:16px;">Could not load data/coldex-data.js — the sample data is unavailable.</div>'));
+    }
 
-    const client   = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-    window.client  = client;
+    const ALL_CORES = DATA.cores;
+    const SAMPLES   = DATA.samples;
+    const coreByCode = new Map(ALL_CORES.map(c => [c.core_code, c]));
+    const sampleById = new Map(SAMPLES.map(r => [r.record_id, r]));
+    const groupBy = (rows, key) => {
+      const m = new Map();
+      for (const r of rows) { if (!m.has(r[key])) m.set(r[key], []); m.get(r[key]).push(r); }
+      return m;
+    };
+    const subsByRecord = groupBy(DATA.subsamples, 'record_id');
+    const subsByCore   = groupBy(DATA.subsamples, 'core_id');
+    const CORE_IDS_WITH_SAMPLES = [...new Set(SAMPLES.map(r => r.core_id))]
+      .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
 
     function esc(s) {
       return (s ?? '').toString()
         .replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;');
+    }
+
+    if (DATA.generated) {
+      document.getElementById('dataStamp').textContent =
+        'Data snapshot: ' + new Date(DATA.generated).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
     }
 
     // === Layout switcher (Interactive Map <-> Sample Finder) ==============
@@ -399,30 +459,19 @@
       document.getElementById('coreCountLabel').textContent = `(${cores.length})`;
     }
 
-    async function loadCoreTable() {
-      const tb = document.getElementById('coreTableBody');
-      const colCount = coreTableColumns.length;
-      tb.innerHTML = `<tr><td class="muted" colspan="${colCount}">Loading…</td></tr>`;
-
-      const { data, error } = await client.rpc('get_allan_hills_cores');
-      if (error) {
-        console.error('get_allan_hills_cores failed', error);
-        tb.innerHTML = `<tr><td class="error" style="display:table-cell;" colspan="${colCount}">Error: ${esc(error.message)}</td></tr>`;
-        return;
-      }
-
-      const cores = (data ?? [])
+    function loadCoreTable() {
+      const cores = ALL_CORES
         .filter(c => c.COLDEX === true)
         .sort((a, b) => (a.core_code || '').localeCompare(b.core_code || ''));
       renderCoreTable(cores);
-      renderMapHotspots(data ?? []);
-      renderMapDots(data ?? []);
+      renderMapHotspots(ALL_CORES);
+      renderMapDots(ALL_CORES);
     }
 
     // === Map hover zones ===================================================
     // Positions are in the map image's own pixel space (2954 x 2133). Each zone
     // covers one dot, or a group of dots too close together to hover separately.
-    // The core details shown in the flag come live from the database by core code.
+    // The core details shown in the flag come from the data snapshot, matched by core code.
     // To add a new core to the map, add its code to the zone covering its dot.
     // An optional `name` labels a zone in the flag (e.g. 'Cul de Sac').
     // Cores with no coordinates in the table (2502, 2503, 2512) are placed with ALHIC2401.
@@ -503,7 +552,7 @@
             ? '<span class="tt-type coldex">COLDEX</span>'
             : '<span class="tt-type noncoldex">Non-COLDEX</span>'}</div>
           <dl style="margin:0;">
-            <div class="tt-row"><dt>Drill date</dt><dd>${esc(dash(c.drill_date))}</dd></div>
+            <div class="tt-row"><dt>Year drilled</dt><dd>${esc(dash(c['Year Drilled']))}</dd></div>
             <div class="tt-row"><dt>Depth</dt><dd>${esc(dash(depth))}</dd></div>
             <div class="tt-row"><dt>Diameter</dt><dd>${esc(dash(diam))}</dd></div>
             <div class="tt-row"><dt>Age</dt><dd>${esc(dash(age))}</dd></div>
@@ -591,7 +640,6 @@
     const coreSelect        = document.getElementById('coreId');
     const coreSelectAllBtn  = document.getElementById('coreSelectAllBtn');
     const coreClearBtn      = document.getElementById('coreClearBtn');
-    const coreRefreshBtn    = document.getElementById('coreRefreshBtn');
     const coreCountBadge    = document.getElementById('coreCountBadge');
 
     let lastResults = [];
@@ -665,6 +713,7 @@
 
     function overlaps(row, min, max) {
       if (min == null && max == null) return true;
+      if (row.top_depth_m == null || row.bottom_depth_m == null) return false;   // no depth recorded: can't match a depth window
       const top = Number(row.top_depth_m);
       const bot = Number(row.bottom_depth_m);
       if (!Number.isFinite(top) || !Number.isFinite(bot)) return false;
@@ -679,11 +728,9 @@
         .filter(Boolean);
     }
 
-    async function runSearch(ev) {
+    function runSearch(ev) {
       ev?.preventDefault();
       clearError();
-      runBtn.disabled = true;
-      runBtn.textContent = 'Searching…';
 
       const parseNum = (v) => {
         const t = (v ?? '').trim();
@@ -693,72 +740,20 @@
       };
       const minDepth = parseNum(document.getElementById('minDepth').value);
       const maxDepth = parseNum(document.getElementById('maxDepth').value);
-      const rawStatus = document.getElementById('status').value;
-      const status = rawStatus === '' ? null : rawStatus;
+      const status = document.getElementById('status').value || null;
+      const coreSet = new Set(getSelectedCores());
 
-      const selectedCores = getSelectedCores();
-      const toNull = v => (v === undefined || v === '' ? null : v);
-
-      const rpcMin = (minDepth ?? null);
-      const rpcMax = (maxDepth ?? null);
-      const rpcStatus = (status ?? null);
-
-      let data, error;
-
-      if (selectedCores.length <= 1) {
-        const singleCore = selectedCores.length === 1 ? selectedCores[0] : null;
-        ({ data, error } = await client.rpc(RPC_SINGLE, {
-          p_core_id:   toNull(singleCore),
-          p_min_depth: rpcMin,
-          p_max_depth: rpcMax,
-          p_status:    rpcStatus
-        }));
-      } else {
-        ({ data, error } = await client.rpc(RPC_MULTI, {
-          p_core_ids:  selectedCores,
-          p_min_depth: rpcMin,
-          p_max_depth: rpcMax,
-          p_status:    rpcStatus
-        }));
-      }
-
-      runBtn.disabled = false;
-      runBtn.textContent = 'Search';
-
-      if (error) {
-        showError(error.message || 'Unknown error');
-        console.error('RPC error', error);
-        return;
-      }
-
-      const results = Array.isArray(data)
-        ? data.filter(r => overlaps(r, minDepth, maxDepth))
-        : [];
+      const results = SAMPLES.filter(r =>
+        (coreSet.size === 0 || coreSet.has(r.core_id)) &&
+        (status === null || r.status === status) &&
+        overlaps(r, minDepth, maxDepth));
 
       lastResults = results;
       countEl.textContent = `${results.length} result${results.length === 1 ? '' : 's'}`;
       renderRows(results);
     }
 
-    // === Core codes cache + loader =======================================
-    const CORE_CACHE_KEY = 'coreCodes:v2';
-    const CORE_CACHE_TTL_MS = 12 * 60 * 60 * 1000;
-
-    function readCoreCache() {
-      try {
-        const raw = localStorage.getItem(CORE_CACHE_KEY);
-        if (!raw) return null;
-        const { codes, ts } = JSON.parse(raw);
-        if (!Array.isArray(codes) || typeof ts !== 'number') return null;
-        const fresh = (Date.now() - ts) < CORE_CACHE_TTL_MS;
-        return { codes, fresh };
-      } catch { return null; }
-    }
-
-    function writeCoreCache(codes) {
-      try { localStorage.setItem(CORE_CACHE_KEY, JSON.stringify({ codes, ts: Date.now() })); }
-      catch {}
-    }
+    // === Core list + loader =======================================
 
     function fillCoreSelect(codes) {
       const prev = new Set(getSelectedCores());
@@ -774,53 +769,13 @@
       coreSelect.size = Math.max(6, Math.min(10, coreSelect.options.length));
       coreSelect.disabled = false;
       if (coreCountBadge) coreCountBadge.textContent = codes.length;
+      fillSubsCoreSelect(codes);
     }
 
-    async function fetchCoreCodesNetwork() {
-      try {
-        const { data, error } = await client.from('core_codes').select('core_code').order('core_code', { ascending: true });
-        if (error) throw error;
-        const codes = (data ?? []).map(r => (r.core_code || '').trim()).filter(Boolean);
-        if (codes.length) return codes;
-      } catch (e) { console.warn('View core_codes failed:', e.message || e); }
-
-      try {
-        const { data, error } = await client.rpc('coldex_get_core_ids');
-        if (error) throw error;
-        const codes = (data ?? []).map(r => (r.core_id || '').trim()).filter(Boolean);
-        if (codes.length) return codes;
-      } catch (e) { console.warn('RPC coldex_get_core_ids failed:', e.message || e); }
-
-      try {
-        const { data, error } = await client.schema('coldex').from('cores').select('core_code').order('core_code', { ascending: true });
-        if (error) throw error;
-        const codes = (data ?? []).map(r => (r.core_code || '').trim()).filter(Boolean);
-        if (codes.length) return codes;
-      } catch (e) { console.warn('Direct coldex.cores read failed:', e.message || e); }
-
-      return [];
-    }
-
-    async function populateCoreDropdown() {
-      coreSelect.disabled = true;
-      coreSelect.innerHTML = '<option value="">Loading…</option>';
-
-      const cached = readCoreCache();
-      if (cached?.codes?.length) {
-        fillCoreSelect(cached.codes);
-      }
-
-      const liveCodes = await fetchCoreCodesNetwork();
-      if (liveCodes.length) {
-        const cachedStr = JSON.stringify((cached?.codes) || []);
-        const liveStr   = JSON.stringify(liveCodes);
-        if (cachedStr !== liveStr) {
-          fillCoreSelect(liveCodes);
-          writeCoreCache(liveCodes);
-        } else if (!cached?.fresh) {
-          writeCoreCache(liveCodes);
-        }
-      } else if (!cached?.codes?.length) {
+    function populateCoreDropdown() {
+      if (CORE_IDS_WITH_SAMPLES.length) {
+        fillCoreSelect(CORE_IDS_WITH_SAMPLES);
+      } else {
         coreSelect.innerHTML = '<option value="">(No cores found)</option>';
         coreSelect.disabled = false;
       }
@@ -857,22 +812,14 @@
       const title = $id('detailTitle');
       const body  = $id('detailBody');
       if (title) title.textContent = `Sample ${recordId}`;
-      if (body)  body.innerHTML = 'Loading…';
       openDetail();
 
-      const { data, error } = await client.rpc('get_sample_detail', { p_record_id: recordId });
-      if (error) {
-        console.error(error);
-        if (body) body.innerHTML = `<div class="error" style="display:block">Error: ${esc(error.message)}</div>`;
-        return;
-      }
-      if (!data || data.length === 0) {
+      const row = sampleById.get(recordId);
+      if (!row) {
         if (body) body.innerHTML = `<div class="muted">No detail found.</div>`;
         return;
       }
-
-      const row  = data[0];
-      const subs = Array.isArray(row.subsamples) ? row.subsamples : [];
+      const subs = subsByRecord.get(recordId) ?? [];
 
       const subsRows = subs.map(s => `
         <tr>
@@ -944,23 +891,9 @@
       const title = $id('detailTitle');
       const body  = $id('detailBody');
       if (title) title.textContent = `Core ${coreCode}`;
-      if (body)  body.innerHTML = 'Loading…';
       openDetail();
 
-      let data = null, error = null;
-      try {
-        const resp = await client.rpc('get_core_detail', { p_core_code: coreCode });
-        error = resp.error || null;
-        data  = Array.isArray(resp.data) ? resp.data[0] : null;
-      } catch (e) {
-        error = e;
-      }
-
-      if (error) {
-        console.error(error);
-        if (body) body.innerHTML = `<div class="error" style="display:block">Error: ${esc(error.message || 'Failed to load core metadata')}</div>`;
-        return;
-      }
+      const data = coreByCode.get(coreCode);
       if (!data) {
         if (body) body.innerHTML = `<div class="muted">No metadata found for ${esc(coreCode)}.</div>`;
         return;
@@ -970,13 +903,14 @@
         ['core_code','Core ID'],
         ['site_name','Site'],
         ['core_uuid','Core UUID'],
-        ['drill_date','Drill date'],
+        ['Year Drilled','Year drilled'],
         ['pi','PI'],
         ['drill_type','Drill type'],
         ['latitude_deg','Latitude (deg)'],
         ['longitude_deg','Longitude (deg)'],
         ['elevation_m','Elevation (m)'],
-        ['maximum_depth','Maximum depth (m)'],
+        ['Maximum_Depth','Maximum depth (m)'],
+        ['Drill Diameter','Drill diameter (in)'],
         ['oldest_age','Oldest age'],
         ['notes','Notes']
       ];
@@ -1022,6 +956,116 @@
       if (body) body.innerHTML = html;
     }
 
+    // === Subsamples by core ================================================
+    const subsCore  = document.getElementById('subsCore');
+    const subsDest  = document.getElementById('subsDest');
+    const subsErr   = document.getElementById('subsErr');
+    const subsInfo  = document.getElementById('subsInfo');
+    const subsChips = document.getElementById('subsChips');
+    const subsWrap  = document.getElementById('subsTableWrap');
+    const subsBody  = document.getElementById('subsBody');
+    let subsRows = [];
+
+    // Destinations are free text in the database ("UCI" vs "uci"), so group case-insensitively.
+    const normDest = (d) => { const t = (d ?? '').toString().trim(); return t ? t.toUpperCase() : 'Not recorded'; };
+    const sumLen = (rows) => rows.reduce((t, r) => t + (Number(r.length_m) || 0), 0);
+
+    function fillSubsCoreSelect(codes) {
+      const prev = subsCore.value;
+      subsCore.innerHTML = '<option value="">Select a core…</option>' +
+        codes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+      if (codes.includes(prev)) subsCore.value = prev;
+    }
+
+    function resetSubs() {
+      subsRows = [];
+      subsErr.style.display = 'none';
+      subsInfo.textContent = '';
+      subsChips.innerHTML = '';
+      subsWrap.style.display = 'none';
+      subsDest.innerHTML = '<option value="">All destinations</option>';
+      subsDest.disabled = true;
+    }
+
+    function loadSubsamples() {
+      const core = subsCore.value;
+      resetSubs();
+      if (!core) return;
+
+      const data = subsByCore.get(core) ?? [];
+      subsRows = data
+        .map(r => ({ ...r, dest: normDest(r.destination) }))
+        .sort((a, b) =>
+          a.dest.localeCompare(b.dest) ||
+          (Number(a.top_depth_m) || 0) - (Number(b.top_depth_m) || 0) ||
+          (a.subsample_id || '').localeCompare(b.subsample_id || ''));
+
+      const counts = new Map();
+      for (const r of subsRows) counts.set(r.dest, (counts.get(r.dest) || 0) + 1);
+      subsDest.innerHTML = '<option value="">All destinations</option>' +
+        [...counts].map(([d, n]) => `<option value="${esc(d)}">${esc(d)} (${n})</option>`).join('');
+      subsDest.disabled = counts.size === 0;
+      renderSubs();
+    }
+
+    function renderSubs() {
+      const core = subsCore.value;
+      const chosen = subsDest.value;
+      if (subsRows.length === 0) {
+        subsInfo.textContent = core ? `No subsamples recorded for ${core}.` : '';
+        subsChips.innerHTML = '';
+        subsWrap.style.display = 'none';
+        return;
+      }
+
+      // Summary: one chip per destination (click to filter, click again to clear)
+      const groups = new Map();
+      for (const r of subsRows) {
+        if (!groups.has(r.dest)) groups.set(r.dest, []);
+        groups.get(r.dest).push(r);
+      }
+      subsChips.innerHTML = [...groups].map(([d, rows]) =>
+        `<button type="button" class="pill subs-chip${d === chosen ? ' active' : ''}" data-dest="${esc(d)}">` +
+        `${esc(d)} · ${rows.length} · ${sumLen(rows).toFixed(2)} m</button>`).join('');
+
+      const shown = chosen ? subsRows.filter(r => r.dest === chosen) : subsRows;
+      subsInfo.textContent =
+        `${core}: ${subsRows.length} subsamples across ${groups.size} destination${groups.size === 1 ? '' : 's'}` +
+        (chosen ? ` — showing ${shown.length} for ${chosen}` : '') + '.';
+
+      const cell = (v) => esc(v == null || v === '' ? '—' : v);
+      subsBody.innerHTML = shown.map(r => `
+        <tr>
+          <td><strong>${esc(r.dest)}</strong></td>
+          <td>${cell(r.subsample_id)}</td>
+          <td>
+            <button class="pill" data-record-id="${esc(r.record_id)}"
+                    style="cursor:pointer; background:none; border:1px solid #2b356e;">${esc(r.record_id)}</button>
+          </td>
+          <td>${r.top_depth_m ?? ''}</td>
+          <td>${r.bottom_depth_m ?? ''}</td>
+          <td>${r.length_m ?? ''}</td>
+          <td>${cell(r.cut_shape)}</td>
+          <td>${cell(r.purpose_notes)}</td>
+          <td>${cell(r.date_sent)}</td>
+        </tr>`).join('');
+      subsWrap.style.display = '';
+    }
+
+    subsCore.addEventListener('change', loadSubsamples);
+    subsDest.addEventListener('change', renderSubs);
+    subsChips.addEventListener('click', (e) => {
+      const chip = e.target.closest('[data-dest]');
+      if (!chip) return;
+      const d = chip.getAttribute('data-dest');
+      subsDest.value = (subsDest.value === d) ? '' : d;
+      renderSubs();
+    });
+    subsBody.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-record-id]');
+      if (btn) showSampleDetail(btn.getAttribute('data-record-id'));
+    });
+
     // === Wire up finder controls ===========================================
     form.addEventListener('submit', runSearch);
 
@@ -1046,19 +1090,8 @@
       for (const opt of coreSelect.options) opt.selected = false;
     });
 
-    coreRefreshBtn.addEventListener('click', async (e) => {
-      e.preventDefault();
-      const b = coreRefreshBtn;
-      b.textContent = '…';
-      b.disabled = true;
-      localStorage.removeItem(CORE_CACHE_KEY);
-      await populateCoreDropdown();
-      b.textContent = '↻';
-      b.disabled = false;
-    });
-
-    document.addEventListener('DOMContentLoaded', async () => {
-      await populateCoreDropdown();
+    document.addEventListener('DOMContentLoaded', () => {
+      populateCoreDropdown();
       coreSelect.multiple = true;
     });
   </script>
