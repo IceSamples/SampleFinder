@@ -1,0 +1,135 @@
+#!/usr/bin/env python3
+"""Export the website data snapshot from the SQLite master database.
+
+    python3 scripts/export-from-sqlite.py
+    python3 scripts/export-from-sqlite.py --db private/coldex.sqlite --out data/coldex-data.js
+
+Writes data/coldex-data.js, which the website loads. Only these tables are read:
+cores_ALLALHILLS, samples, subsamples. The requests table (names, institutions, emails)
+and the staging/temp tables are never touched.
+
+Request IDs are published as the bare code only (C_YYYY_NNN); anything the database appends
+after the code (requester names, institutions, notes) is dropped.
+"""
+import argparse
+import datetime
+import json
+import os
+import re
+import sqlite3
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(HERE)
+REQUEST_CODE = re.compile(r"^C_\d{4}_\d{3}")
+
+
+def natural(s):
+    """Sort 'ALHIC2201' after 'ALHIC1901' and 'S2' before 'S10' (like localeCompare numeric)."""
+    return [(0, int(p)) if p.isdigit() else (1, p.lower()) for p in re.split(r"(\d+)", s or "") if p != ""]
+
+
+def clean(v):
+    """Whole-number floats print as integers (4800000.0 -> 4800000)."""
+    if isinstance(v, float) and v.is_integer():
+        return int(v)
+    return v
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--db", default=os.path.join(ROOT, "private", "coldex.sqlite"))
+    ap.add_argument("--out", default=os.path.join(ROOT, "data", "coldex-data.js"))
+    args = ap.parse_args()
+
+    if not os.path.exists(args.db):
+        sys.exit(f"Database not found: {args.db}")
+    con = sqlite3.connect(f"file:{os.path.abspath(args.db)}?mode=ro", uri=True)   # read-only
+    con.row_factory = sqlite3.Row
+
+    # ---- cores (the table the map and core pages use) ---------------------------------
+    cores = []
+    for r in con.execute('SELECT * FROM "cores_ALLALHILLS"'):
+        row = {k: clean(r[k]) for k in r.keys()}
+        if row.get("COLDEX") is not None:
+            row["COLDEX"] = bool(row["COLDEX"])
+        cores.append(row)
+    cores.sort(key=lambda c: natural(c["core_code"]))
+
+    # ---- samples ---------------------------------------------------------------------------
+    samples = []
+    for r in con.execute("""
+        SELECT s.record_id, s.core_id, s.section_number, s.top_depth_m, s.bottom_depth_m,
+               s.length_m, s.remaining_m,
+               (SELECT COUNT(*) FROM subsamples ss WHERE ss.parent_section_id = s.record_id) AS subsample_count,
+               s.status, s.notes
+        FROM samples s WHERE s.core_id IS NOT NULL"""):
+        n = r["subsample_count"]
+        samples.append({
+            "record_id": r["record_id"], "core_id": r["core_id"], "section_number": r["section_number"],
+            "top_depth_m": clean(r["top_depth_m"]), "bottom_depth_m": clean(r["bottom_depth_m"]),
+            "length_m": clean(r["length_m"]), "remaining_m": clean(r["remaining_m"]),
+            "has_subsamples": n > 0, "subsample_count": n,
+            "status": r["status"], "notes": r["notes"],
+        })
+    samples.sort(key=lambda s: (natural(s["core_id"]),
+                                s["top_depth_m"] if s["top_depth_m"] is not None else float("inf"),
+                                natural(s["record_id"])))
+
+    # ---- subsamples ------------------------------------------------------------------------
+    dropped = set()
+
+    def request_code(v):
+        if v is None or str(v).strip() == "":
+            return None
+        m = REQUEST_CODE.match(str(v).strip())
+        if not m:
+            dropped.add(str(v))
+            return None
+        return m.group(0)
+
+    subsamples = []
+    for r in con.execute("""
+        SELECT ss.parent_section_id AS record_id, s.core_id, ss.subsample_id, ss.destination,
+               ss.top_depth_m, ss.bottom_depth_m, ss.length_m, ss.cut_shape, ss.purpose_notes,
+               ss.date_sent, ss.status, ss.request_id, ss.linked_shipment
+        FROM subsamples ss JOIN samples s ON s.record_id = ss.parent_section_id
+        WHERE s.core_id IS NOT NULL"""):
+        row = {k: clean(r[k]) for k in r.keys()}
+        row["request_id"] = request_code(row["request_id"])
+        subsamples.append(row)
+    subsamples.sort(key=lambda s: (natural(s["core_id"]), natural(s["record_id"]), natural(s["subsample_id"])))
+
+    orphans = con.execute("SELECT COUNT(*) FROM subsamples WHERE parent_section_id IS NULL "
+                          "OR parent_section_id NOT IN (SELECT record_id FROM samples)").fetchone()[0]
+    con.close()
+
+    # ---- write -----------------------------------------------------------------------------
+    def lines(rows):
+        return "[\n" + ",\n".join("  " + json.dumps(r, ensure_ascii=False, separators=(",", ":")) for r in rows) + "\n]"
+
+    generated = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.000Z")
+    js = ("// Snapshot of the COLDEX sample database. Generated by scripts/export-from-sqlite.py — do not edit by hand.\n"
+          "window.COLDEX_DATA = {\n"
+          f"  generated: {json.dumps(generated)},\n"
+          f"  cores: {lines(cores)},\n"
+          f"  samples: {lines(samples)},\n"
+          f"  subsamples: {lines(subsamples)}\n"
+          "};\n")
+    os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)
+    with open(args.out, "w", encoding="utf-8") as f:
+        f.write(js)
+
+    print(f"{len(cores)} cores, {len(samples)} samples, {len(subsamples)} subsamples")
+    print("request codes:", ", ".join(sorted({s['request_id'] for s in subsamples if s['request_id']})) or "(none)")
+    if dropped:
+        print(f"warning: {len(dropped)} request value(s) did not start with a C_YYYY_NNN code and were left out:")
+        for v in sorted(dropped):
+            print("  -", v)
+    if orphans:
+        print(f"warning: {orphans} subsample(s) have no matching parent section and were not exported")
+    print(f"Wrote {args.out} ({len(js) / 1024 / 1024:.2f} MB), snapshot time {generated}")
+
+
+if __name__ == "__main__":
+    main()
