@@ -172,7 +172,14 @@ CREATE VIEW v_data_checks AS
   UNION ALL
   SELECT 'request code not in requests table', request_id, COUNT(*) || ' subsamples'
     FROM subsamples WHERE request_id IS NOT NULL AND request_id NOT IN (SELECT request_id FROM requests)
-    GROUP BY request_id;
+    GROUP BY request_id
+  UNION ALL
+  SELECT 'core has samples but is missing from cores_ALLALHILLS (no map or core page on the website)', core_id, COUNT(*) || ' samples'
+    FROM samples WHERE core_id IS NOT NULL AND core_id NOT IN (SELECT core_code FROM "cores_ALLALHILLS")
+    GROUP BY core_id
+  UNION ALL
+  SELECT 'core is in cores but missing from cores_ALLALHILLS', core_code, NULL
+    FROM cores WHERE core_code NOT IN (SELECT core_code FROM "cores_ALLALHILLS");
 
 -- ---------------------------------------------------------------------------------
 -- Triggers
