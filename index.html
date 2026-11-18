@@ -40,7 +40,8 @@
     .app-header[open] summary::before { transform: rotate(90deg); }
     .app-header summary:hover { color: #2563eb; }
     .app-header p { margin: 8px 4px 4px; }
-    .app-header .guide-lead { margin-top: 14px; }
+    .app-header .guide-lead { margin-top: 8px; }
+    .app-header .guide-foot { margin-top: 14px; }
     .guide { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 4px 4px; }
     .guide-col { border: 1px solid #e2e8f0; border-radius: var(--radius); padding: 14px 16px; background: #f8fafc; }
     .guide-col p { margin: 8px 0 6px; font-weight: 600; color: #0f172a; }
@@ -206,15 +207,7 @@
 
     <details class="card app-header">
       <summary>About this site &amp; how to use it</summary>
-      <p>
-        To learn more about COLDEX ice cores, visit the
-        <strong><a href="https://coldex.org/ice-core-information" target="_blank" rel="noopener noreferrer">COLDEX ice core information page</a></strong>.
-        To request samples, follow instructions
-        <strong><a href="https://coldex.org/request-samples" target="_blank" rel="noopener noreferrer">here</a></strong>.
-        This database is updated in coordination with the National Ice Core Facility after each field season and again after each CPL.
-        Please contact the data manager if you see any errors.
-      </p>
-      <p class="guide-lead">This site has <strong>two tabs</strong>. Use the buttons above to switch between them:</p>
+      <p class="guide-lead">This site has <strong>two tabs</strong>. Use the tabs below to switch between them:</p>
       <div class="guide">
         <div class="guide-col">
           <div class="guide-tab on">Interactive Map</div>
@@ -236,6 +229,14 @@
           </ul>
         </div>
       </div>
+      <p class="guide-foot">
+        To learn more about COLDEX ice cores, visit the
+        <strong><a href="https://coldex.org/ice-core-information" target="_blank" rel="noopener noreferrer">COLDEX ice core information page</a></strong>.
+        To request samples, follow instructions
+        <strong><a href="https://coldex.org/request-samples" target="_blank" rel="noopener noreferrer">here</a></strong>.
+        This database is updated in coordination with the National Ice Core Facility after each field season and again after each CPL.
+        Please contact the data manager if you see any errors.
+      </p>
     </details>
 
     <div class="switcher" role="tablist" aria-label="Layout option">
