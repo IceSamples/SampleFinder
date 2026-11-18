@@ -208,6 +208,7 @@
     .core-controls .btn { padding: 6px 10px; }
 
     /* --- Subsamples by core --- */
+    .subs-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }
     .subs-info { margin-top: 12px; font-size: 13px; color: #475569; }
     .subs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .subs-chip { cursor: pointer; background: #ffffff; border: 1px solid #cbd5e1; color: #0f172a; font-size: 12px; padding: 3px 10px; }
@@ -353,23 +354,25 @@
             <div class="form-actions">
                 <button id="runBtn" class="btn btn-primary" type="submit">Search</button>
                 <button id="resetBtn" class="btn btn-ghost" type="button">Reset</button>
-                <span class="spacer"></span>
-                <button id="csvBtn" class="btn btn-ghost" type="button" title="Download the sample results as CSV">Download CSV</button>
               </div>
             </div>
             </div>
             <div id="err" class="error"></div>
           </form>
           <div class="foot">
-            <div id="count" class="muted">0 results</div>
             <div class="muted">Depth filters include any sample overlapping the window. Choosing a destination also lists the matching subsamples.</div>
           </div>
         </div>
 
         <!-- Subsamples (shown when "Show subsamples sent to" is set) -->
         <div class="card" id="subsCard" style="display:none; margin-bottom:16px;">
-          <h2 style="margin:0 0 2px; font-size:16px;">Subsamples</h2>
-          <div class="muted">For the cores and depth range chosen above. Click a destination to focus on it.</div>
+          <div class="subs-head">
+            <div>
+              <h2 style="margin:0 0 2px; font-size:16px;">Subsamples</h2>
+              <div class="muted">For the cores and depth range chosen above. Click a destination to focus on it.</div>
+            </div>
+            <button id="subsCsvBtn" class="btn btn-ghost" type="button" disabled title="Download the subsamples listed below as CSV">Download subsamples CSV</button>
+          </div>
           <div id="subsInfo" class="subs-info"></div>
           <div id="subsChips" class="subs-chips"></div>
           <div class="table-wrap" id="subsTableWrap" style="display:none; margin-top:12px;">
@@ -386,7 +389,16 @@
           </div>
         </div>
 
-        <div class="table-wrap card">
+        <div class="card" id="samplesCard" style="margin-bottom:16px;">
+          <div class="subs-head">
+            <div>
+              <h2 style="margin:0 0 2px; font-size:16px;">Samples</h2>
+              <div class="muted">For the cores, depth range and status chosen above.</div>
+            </div>
+            <button id="csvBtn" class="btn btn-ghost" type="button" disabled title="Download the samples listed below (not the subsamples) as CSV">Download samples CSV</button>
+          </div>
+          <div id="count" class="subs-info">0 results</div>
+          <div class="table-wrap" style="margin-top:12px;">
           <table id="tbl">
             <thead>
               <tr>
@@ -403,6 +415,7 @@
             </thead>
             <tbody id="tbody"><tr><td colspan="9" class="muted">Run a search…</td></tr></tbody>
           </table>
+          </div>
         </div>
       </div>
 
@@ -748,11 +761,7 @@
       }
     }
 
-    function toCSV(rows) {
-      const cols = [
-        'record_id','core_id','section_number','top_depth_m','bottom_depth_m',
-        'length_m','has_subsamples','subsample_count','status','notes'
-      ];
+    function toCSV(rows, cols) {
       const header = cols.join(',');
       const lines = rows.map(r =>
         cols.map(c => {
@@ -765,17 +774,38 @@
       return [header, ...lines].join('\n');
     }
 
-    function downloadCSV(rows) {
-      if (!rows || rows.length === 0) return;
-      const blob = new Blob([toCSV(rows)], { type: 'text/csv;charset=utf-8;' });
+    function saveCSV(text, filename) {
+      const blob = new Blob([text], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'coldex_available_samples.csv';
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       a.remove();
       URL.revokeObjectURL(url);
+    }
+
+    const SAMPLE_CSV_COLS = [
+      'record_id','core_id','section_number','top_depth_m','bottom_depth_m',
+      'length_m','has_subsamples','subsample_count','status','notes'
+    ];
+    const SUBSAMPLE_CSV_COLS = [
+      'destination','subsample_id','record_id','core_id','top_depth_m','bottom_depth_m',
+      'length_m','cut_shape','purpose_notes','date_sent','status','request_id','linked_shipment'
+    ];
+
+    function downloadCSV(rows) {
+      if (!rows || rows.length === 0) return;
+      saveCSV(toCSV(rows, SAMPLE_CSV_COLS), 'coldex_available_samples.csv');
+    }
+
+    function downloadSubsCSV() {
+      if (!lastSubs.length) return;
+      // "destination" in the file is the cleaned-up name shown on screen (UCI and uci are one destination)
+      const rows = lastSubs.map(r => ({ ...r, destination: r.dest }));
+      const only = destSelect.value && destSelect.value !== DEST_ANY ? '_' + destSelect.value.replace(/[^A-Za-z0-9_-]+/g, '-') : '';
+      saveCSV(toCSV(rows, SUBSAMPLE_CSV_COLS), `coldex_subsamples${only}.csv`);
     }
 
     function overlaps(row, min, max) {
@@ -817,6 +847,7 @@
 
       lastResults = results;
       countEl.textContent = `${results.length} result${results.length === 1 ? '' : 's'}`;
+      syncCsvBtn();
       renderRows(results);
       updateSubsamples(coreSet, minDepth, maxDepth);
     }
@@ -1031,6 +1062,8 @@
     const subsWrap   = document.getElementById('subsTableWrap');
     const subsBody   = document.getElementById('subsBody');
     const DEST_ANY = '*';
+    let lastSubs = [];   // the subsample rows currently shown (what the subsamples CSV button downloads)
+    const subsCsvBtn = document.getElementById('subsCsvBtn');
 
     // Destinations are free text in the database ("UCI" vs "uci"), so group case-insensitively.
     const normDest = (d) => { const t = (d ?? '').toString().trim(); return t ? t.toUpperCase() : 'Not recorded'; };
@@ -1054,6 +1087,7 @@
       subsChips.innerHTML = '';
       subsBody.innerHTML = '';
       subsWrap.style.display = 'none';
+      lastSubs = [];
     }
 
     function updateSubsamples(coreSet, minDepth, maxDepth) {
@@ -1070,6 +1104,8 @@
 
       const where = coreLabel(coreSet) + (minDepth != null || maxDepth != null ? ' (within the depth range)' : '');
       subsCard.style.display = '';
+      lastSubs = [];
+      subsCsvBtn.disabled = true;
 
       if (base.length === 0) {
         subsInfo.textContent = `No subsamples recorded for ${where}.`;
@@ -1094,6 +1130,9 @@
         (choice === DEST_ANY ? '.' : shown.length ? ` — showing ${shown.length} for ${choice}.` : ` — none were sent to ${choice}.`);
 
       if (shown.length === 0) { subsWrap.style.display = 'none'; return; }
+      lastSubs = shown;
+      subsCsvBtn.disabled = false;
+      subsCsvBtn.textContent = `Download subsamples CSV (${shown.length})`;
 
       const cell = (v) => esc(v == null || v === '' ? '—' : v);
       subsBody.innerHTML = shown.map(r => `
@@ -1136,10 +1175,16 @@
       lastResults = [];
       renderRows([]);
       countEl.textContent = '0 results';
+      syncCsvBtn();
       hideSubs();
     });
 
+    function syncCsvBtn() {   // enabled only when there are samples to download; shows how many rows the file has
+      csvBtn.disabled = lastResults.length === 0;
+      csvBtn.textContent = lastResults.length ? `Download samples CSV (${lastResults.length})` : 'Download samples CSV';
+    }
     csvBtn.addEventListener('click', () => downloadCSV(lastResults));
+    subsCsvBtn.addEventListener('click', downloadSubsCSV);
 
     coreSelectAllBtn.addEventListener('click', (e) => {
       e.preventDefault();
