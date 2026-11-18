@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+// !!! LEGACY — DO NOT RUN !!!
+// This reads the OLD Supabase database. The master data now lives in private/coldex.sqlite,
+// so running this would overwrite data/coldex-data.js with out-of-date Supabase data.
+// Use `python3 scripts/update-site.py` instead.
+// (Kept only until the Supabase project is deleted. It refuses to run unless told to.)
+if (!process.argv.includes('--yes-supabase-is-stale')) {
+  console.error('This script is legacy and would publish OUT-OF-DATE data from Supabase.\nUse: python3 scripts/update-site.py');
+  process.exit(1);
+}
 // Exports a snapshot of the COLDEX sample data into data/coldex-data.js, which the
 // website loads instead of querying Supabase live.
 //
