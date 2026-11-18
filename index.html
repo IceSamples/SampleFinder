@@ -27,6 +27,10 @@
       box-shadow: 0 4px 10px rgba(0,0,0,.05);
     }
 
+    /* --- Banner photo (file: images/banner.jpg; hidden automatically if the file is missing) --- */
+    .banner { margin: 0 0 18px; border-radius: var(--radius); overflow: hidden; border: 1px solid #e2e8f0; background: #e2e8f0; }
+    .banner img { display: block; width: 100%; height: clamp(120px, 22vw, 240px); object-fit: cover; object-position: center; }
+
     /* --- Instruction header --- */
     .app-header { margin-bottom: 16px; font-size: 15px; color: #334155; line-height: 1.5; }
     .app-header strong { color: #1e3a8a; }
@@ -169,6 +173,9 @@
 </head>
 <body>
   <div class="wrap">
+    <div class="banner" id="banner">
+      <img src="images/banner.jpg" alt="COLDEX ice core field site" onerror="document.getElementById('banner').hidden = true" />
+    </div>
     <h1>COLDEX Sample Finder</h1>
 
     <div class="card app-header">
