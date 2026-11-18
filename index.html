@@ -27,19 +27,26 @@
       box-shadow: 0 4px 10px rgba(0,0,0,.05);
     }
 
-    /* --- Banner photo (file: images/banner.jpg; hidden automatically if the file is missing) --- */
-    .banner { margin: 0 0 18px; border-radius: var(--radius); overflow: hidden; border: 1px solid #e2e8f0; background: #e2e8f0; }
-    .banner img { display: block; width: 100%; height: clamp(120px, 22vw, 240px); object-fit: cover; object-position: center; }
+    /* --- Banner photo: full width of the screen (file: images/banner.jpg; hidden if missing) --- */
+    .banner { position: relative; width: 100%; background: #cbd5e1; }
+    .banner > img.banner-photo { display: block; width: 100%; height: clamp(140px, 33.3vw, 480px); object-fit: cover; object-position: center top; }
+    .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
     /* --- Instruction header --- */
     .app-header { margin-bottom: 16px; font-size: 15px; color: #334155; line-height: 1.5; }
+    .app-header summary { cursor: pointer; font-weight: 700; font-size: 16px; color: #1e3a8a; padding: 6px 4px; list-style: none; display: flex; align-items: center; gap: 8px; }
+    .app-header summary::-webkit-details-marker { display: none; }
+    .app-header summary::before { content: "\25B8"; display: inline-block; transition: transform .15s; }
+    .app-header[open] summary::before { transform: rotate(90deg); }
+    .app-header summary:hover { color: #2563eb; }
+    .app-header p { margin: 8px 4px 4px; }
     .app-header strong { color: #1e3a8a; }
 
     /* --- Layout switcher --- */
-    .switcher { display: flex; gap: 8px; margin-bottom: 12px; }
+    .switcher { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-bottom: 16px; }
     .switcher button {
-      border-radius: 999px; padding: 8px 16px; border: 1px solid #cbd5e1;
-      background: #ffffff; cursor: pointer; font-weight: 600; color: #475569;
+      border-radius: 999px; padding: 16px 36px; border: 2px solid #cbd5e1; font-size: 20px;
+      background: #ffffff; cursor: pointer; font-weight: 700; color: #475569;
     }
     .switcher button.active { background: #2563eb; border-color: #2563eb; color: #ffffff; }
 
@@ -172,13 +179,20 @@
   <script src="data/coldex-data.js"></script>
 </head>
 <body>
-  <div class="wrap">
-    <div class="banner" id="banner">
-      <img src="images/banner.jpg" alt="COLDEX ice core field site" onerror="document.getElementById('banner').hidden = true" />
-    </div>
-    <h1>COLDEX Sample Finder</h1>
+  <div class="banner" id="banner">
+    <img class="banner-photo" src="images/banner.jpg" alt="COLDEX ice core field site" onerror="document.getElementById('banner').hidden = true" />
+  </div>
 
-    <div class="card app-header">
+  <div class="wrap">
+    <h1 class="sr-only">COLDEX Sample Finder</h1>
+
+    <div class="switcher" role="tablist" aria-label="Layout option">
+      <button data-layout="map" class="active" role="tab" aria-selected="true" type="button">Interactive Map</button>
+      <button data-layout="finder" role="tab" aria-selected="false" type="button">Sample Finder</button>
+    </div>
+
+    <details class="card app-header" open>
+      <summary>About this site &amp; how to use it</summary>
       <p>
         To learn more about COLDEX ice cores, visit the
         <strong><a href="https://coldex.org/ice-core-information" target="_blank" rel="noopener noreferrer">COLDEX ice core information page</a></strong>.
@@ -192,12 +206,7 @@
         Click <strong>Search</strong> to view matching results, or <strong>Download CSV</strong> to export your data.
         Click on Record ID or Core ID buttons for subsample information and core metadata.
       </p>
-    </div>
-
-    <div class="switcher" role="tablist" aria-label="Layout option">
-      <button data-layout="map" class="active" role="tab" aria-selected="true" type="button">Interactive Map</button>
-      <button data-layout="finder" role="tab" aria-selected="false" type="button">Sample Finder</button>
-    </div>
+    </details>
 
     <div class="option-note" id="optionNote"></div>
 
