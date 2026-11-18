@@ -40,17 +40,35 @@
     .app-header[open] summary::before { transform: rotate(90deg); }
     .app-header summary:hover { color: #2563eb; }
     .app-header p { margin: 8px 4px 4px; }
+    .app-header .guide-lead { margin-top: 14px; }
+    .guide { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 10px 4px 4px; }
+    .guide-col { border: 1px solid #e2e8f0; border-radius: var(--radius); padding: 14px 16px; background: #f8fafc; }
+    .guide-col p { margin: 8px 0 6px; font-weight: 600; color: #0f172a; }
+    .guide-col ul { margin: 0; padding-left: 18px; }
+    .guide-col li { margin: 4px 0; }
+    /* Little copies of the real tab buttons, so each column is clearly matched to its tab */
+    .guide-tab { display: inline-block; border-radius: 999px; padding: 6px 16px; font-weight: 700; font-size: 15px; border: 2px solid #cbd5e1; background: #fff; color: #475569; }
+    .guide-tab.on { background: #2563eb; border-color: #2563eb; color: #fff; }
+    /* Non-clickable look-alikes of the real Record ID / Core ID buttons in the results table */
+    .demo-pill { background: none; font-family: system-ui, -apple-system, sans-serif; cursor: default; }
+    .demo-pill.rec { border-color: #2b356e; }
+    .demo-pill.core { border-color: #2563eb; }
+    @media (max-width: 760px) { .guide { grid-template-columns: 1fr; } }
     .app-header strong { color: #1e3a8a; }
 
     /* --- Layout switcher --- */
-    .switcher { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-bottom: 16px; }
+    /* File-style tabs: the active tab is joined to the panel below it; inactive tabs sit lower and greyed */
+    .switcher { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: 6px; margin: 18px 0 -1px; position: relative; z-index: 5; }
     .switcher button {
-      border-radius: 999px; padding: 16px 36px; border: 2px solid #cbd5e1; font-size: 20px;
-      background: #ffffff; cursor: pointer; font-weight: 700; color: #475569;
+      position: relative; margin-top: 8px; padding: 12px 36px; font-size: 18px; font-weight: 700; cursor: pointer;
+      border: 1px solid #e2e8f0; border-bottom-color: #e2e8f0; border-radius: 14px 14px 0 0;
+      background: #e2e8f0; color: #64748b;
     }
-    .switcher button.active { background: #2563eb; border-color: #2563eb; color: #ffffff; }
-
-    .option-note { font-size: 13px; color: #64748b; margin-bottom: 12px; min-height: 1em; }
+    .switcher button:hover { background: #f1f5f9; color: #334155; }
+    .switcher button.active {
+      margin-top: 0; padding-top: 18px; background: #ffffff; color: #1e3a8a;
+      border-color: #cbd5e1; border-bottom-color: #ffffff; border-top: 4px solid #2563eb;
+    }
 
     /* --- Map layout --- */
     .map-layout { position: relative; height: 620px; overflow: hidden; border-radius: var(--radius); }
@@ -186,12 +204,7 @@
   <div class="wrap">
     <h1 class="sr-only">COLDEX Sample Finder</h1>
 
-    <div class="switcher" role="tablist" aria-label="Layout option">
-      <button data-layout="map" class="active" role="tab" aria-selected="true" type="button">Interactive Map</button>
-      <button data-layout="finder" role="tab" aria-selected="false" type="button">Sample Finder</button>
-    </div>
-
-    <details class="card app-header" open>
+    <details class="card app-header">
       <summary>About this site &amp; how to use it</summary>
       <p>
         To learn more about COLDEX ice cores, visit the
@@ -200,15 +213,35 @@
         <strong><a href="https://coldex.org/request-samples" target="_blank" rel="noopener noreferrer">here</a></strong>.
         This database is updated in coordination with the National Ice Core Facility after each field season and again after each CPL.
         Please contact the data manager if you see any errors.
-        <br><br>
-        <strong>How to use:</strong> Select one or more core IDs (hold Cmd/Ctrl to select multiple).
-        Optionally set depth filters and choose a sample status.
-        Click <strong>Search</strong> to view matching results, or <strong>Download CSV</strong> to export your data.
-        Click on Record ID or Core ID buttons for subsample information and core metadata.
       </p>
+      <p class="guide-lead">This site has <strong>two tabs</strong>. Use the buttons above to switch between them:</p>
+      <div class="guide">
+        <div class="guide-col">
+          <div class="guide-tab on">Interactive Map</div>
+          <p>Explore where each core was drilled in the Allan Hills.</p>
+          <ul>
+            <li>Hover over a core on the map to see its ID, year drilled, depth, diameter, age and description.</li>
+            <li>Blue dots are COLDEX cores; orange dots are non-COLDEX cores.</li>
+            <li>Open the table at the bottom of the map to compare all COLDEX cores. Click a core ID for its full metadata.</li>
+          </ul>
+        </div>
+        <div class="guide-col">
+          <div class="guide-tab">Sample Finder</div>
+          <p>Search the sample database and export what you find.</p>
+          <ul>
+            <li>Select one or more core IDs (hold Cmd/Ctrl to select several). Optionally set depth filters and a sample status.</li>
+            <li>Click <strong>Search</strong> to list matching samples, or <strong>Download CSV</strong> to export them.</li>
+            <li>Use <strong>Show subsamples sent to</strong> to see which subsamples went to which institution.</li>
+            <li>In the results, click a <span class="pill demo-pill rec">Record ID</span> or <span class="pill demo-pill core">Core ID</span> button for subsample information and core metadata.</li>
+          </ul>
+        </div>
+      </div>
     </details>
 
-    <div class="option-note" id="optionNote"></div>
+    <div class="switcher" role="tablist" aria-label="Layout option">
+      <button data-layout="map" class="active" role="tab" aria-selected="true" type="button">Interactive Map</button>
+      <button data-layout="finder" role="tab" aria-selected="false" type="button">Sample Finder</button>
+    </div>
 
     <div class="stage" id="stage" data-layout="map">
 
@@ -406,12 +439,6 @@
     const stage         = document.getElementById('stage');
     const mapLayout      = document.getElementById('mapLayout');
     const finderLayout   = document.getElementById('finderLayout');
-    const optionNote     = document.getElementById('optionNote');
-
-    const layoutNotes = {
-      map: 'Map of the Allan Hills field area. Hover over a core location for details; pan/zoom is coming soon.',
-      finder: 'Search the sample database directly using the filters below.'
-    };
 
     function setLayout(layout) {
       stage.dataset.layout = layout;
@@ -422,7 +449,6 @@
       });
       mapLayout.style.display    = layout === 'map'    ? '' : 'none';
       finderLayout.style.display = layout === 'finder' ? '' : 'none';
-      optionNote.textContent = layoutNotes[layout] || '';
     }
 
     switcherBtns.forEach(b => b.addEventListener('click', () => setLayout(b.dataset.layout)));
