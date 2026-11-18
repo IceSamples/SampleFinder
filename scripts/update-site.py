@@ -11,7 +11,9 @@ What it does, in order:
   3. Shows the data-check warnings (informational).
   4. Builds the new website data (data/coldex-data.js) from the database.
   5. Shows exactly what changed compared with the data currently on the website.
-  6. Asks "Publish?" and then commits ONLY data/coldex-data.js and pushes it to GitHub.
+  6. Asks "Publish?" and then commits ONLY data/coldex-data.js and pushes it to the LIVE site
+     (the GitHub repo named "live"). Run it from the main project folder (branch "main"), not
+     from the SANDBOX folder.
 
 It stops, changing nothing public, if something looks wrong (for example, a big drop in rows,
 or a git identity that is not a GitHub no-reply address).
@@ -28,6 +30,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 DATA_FILE = os.path.join(ROOT, "data", "coldex-data.js")
+PUBLISH_REMOTE = "live"      # the real site: github.com/IceSamples/SampleFinder
+PUBLISH_BRANCH = "main"
 
 
 def say(msg=""):
@@ -50,9 +54,9 @@ def git(*args, check=True):
     return r.stdout.strip()
 
 
-def load_snapshot(path):
-    """Read a coldex-data.js file back into Python."""
-    raw = open(path, encoding="utf-8").read()
+def load_snapshot(path=None, text=None):
+    """Read a coldex-data.js file (or its text) back into Python."""
+    raw = text if text is not None else open(path, encoding="utf-8").read()
     body = raw[raw.index("window.COLDEX_DATA = ") + len("window.COLDEX_DATA = "):].rstrip().rstrip(";")
     for k in ("generated", "cores", "samples", "subsamples"):
         body = body.replace(f"\n  {k}:", f'\n  "{k}":')
@@ -100,6 +104,21 @@ def main():
     say("COLDEX website update")
     say("=" * 60)
 
+    # ---- 0. right place? (publishing is only done from the main folder) --------------------
+    if not args.no_push:
+        branch = git("rev-parse", "--abbrev-ref", "HEAD")
+        if branch != PUBLISH_BRANCH:
+            main_dir = ""
+            for block in git("worktree", "list", "--porcelain").split("\n\n"):
+                if f"branch refs/heads/{PUBLISH_BRANCH}" in block:
+                    main_dir = block.splitlines()[0].replace("worktree ", "", 1)
+            die(f"This folder is on the '{branch}' branch (the SANDBOX copy), not the live one.\n"
+                "Data updates are published from the main project folder" +
+                (f":\n  {main_dir}" if main_dir else ".") +
+                "\nUse 'Preview on Dev Site' / 'Go Live' here for design experiments.")
+        if subprocess.run(["git", "remote", "get-url", PUBLISH_REMOTE], cwd=ROOT, capture_output=True).returncode != 0:
+            die(f"No git remote named '{PUBLISH_REMOTE}' (the live site) is set up in this folder.")
+
     # ---- 1. database saved and healthy -----------------------------------------------------
     step(1, "Checking the database")
     if not os.path.exists(args.db):
@@ -137,8 +156,15 @@ def main():
 
     # ---- 4. build the new data file --------------------------------------------------------------
     step(4, "Building the website data")
-    had_old = os.path.exists(DATA_FILE)
-    old = load_snapshot(DATA_FILE) if had_old else None
+    # Compare against the version last SAVED in git (what the website is showing), not just the file on disk:
+    # a file written by an earlier run that was never published must still count as a pending change.
+    shown = subprocess.run(["git", "show", "HEAD:data/coldex-data.js"], cwd=ROOT, capture_output=True, text=True)
+    if shown.returncode == 0:
+        old = load_snapshot(text=shown.stdout)
+    elif os.path.exists(DATA_FILE):
+        old = load_snapshot(DATA_FILE)
+    else:
+        old = None
     tmp = DATA_FILE + ".new"
     r = subprocess.run([sys.executable, os.path.join(HERE, "export-from-sqlite.py"), "--db", args.db, "--out", tmp],
                        capture_output=True, text=True)
@@ -179,22 +205,36 @@ def main():
     step(6, "Publish to GitHub")
     email = git("config", "user.email")
     name = git("config", "user.name")
-    remote = git("remote", "get-url", "origin")
+    remote = git("remote", "get-url", PUBLISH_REMOTE)
     if not email.endswith("@users.noreply.github.com"):
         die(f"The git email for this project is '{email}', not a GitHub no-reply address.\n"
             "Nothing was published. (The data file is updated but not committed.)")
+    fetch = subprocess.run(["git", "fetch", "-q", PUBLISH_REMOTE, PUBLISH_BRANCH], cwd=ROOT, capture_output=True, text=True)
+    if fetch.returncode != 0:
+        die("Couldn't reach GitHub to check the live site:\n" + (fetch.stderr or fetch.stdout).strip() +
+            "\nNothing was published. (The data file is updated but not committed.)")
+    live_ref = f"{PUBLISH_REMOTE}/{PUBLISH_BRANCH}"
+    behind = git("rev-list", "--count", f"HEAD..{live_ref}")
+    if behind != "0":
+        die(f"The live site has {behind} change(s) this folder doesn't have yet.\n"
+            f"Run:  git pull {PUBLISH_REMOTE} {PUBLISH_BRANCH}   (or ask Claude), then run this again.")
     others = [l for l in git("status", "--short").splitlines() if "data/coldex-data.js" not in l]
     if others:
         say("  note: other files have uncommitted changes; they will NOT be included:")
         for l in others[:6]:
             say("    " + l)
+    waiting = git("log", "--format=%h %s", f"{live_ref}..HEAD").splitlines()
+    if waiting:
+        say("  note: these earlier saved changes have not gone live yet and WILL be published too:")
+        for l in waiting[:8]:
+            say("    " + l)
     say(f"  will commit data/coldex-data.js as: {name} <{email}>")
-    say(f"  and push to: {remote}")
+    say(f"  and publish to the LIVE site: {remote}")
     if not args.yes:
         if not sys.stdin.isatty():
             die("Not running in a terminal, so I can't ask. Use --yes to publish without asking.")
         try:
-            answer = input("\nPublish this update now? [y/N] ").strip().lower()
+            answer = input("\nPublish this update to the LIVE site now? [y/N] ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             answer = ""
         if answer not in ("y", "yes"):
@@ -204,11 +244,12 @@ def main():
     today = datetime.date.today().isoformat()
     git("add", "data/coldex-data.js")
     git("commit", "-m", f"Update data snapshot ({today})\n\n" + "\n".join(l.strip() for l in lines))
-    out = subprocess.run(["git", "push"], cwd=ROOT, capture_output=True, text=True)
+    out = subprocess.run(["git", "push", PUBLISH_REMOTE, f"HEAD:{PUBLISH_BRANCH}"], cwd=ROOT, capture_output=True, text=True)
     if out.returncode != 0:
         die("The commit was made locally but the push failed:\n" + (out.stderr or out.stdout).strip() +
-            "\nFix the problem, then run: git push")
-    say("\nPublished. GitHub Pages usually updates within a minute or two (do a hard refresh to see it).")
+            f"\nFix the problem, then run: git push {PUBLISH_REMOTE} {PUBLISH_BRANCH}")
+    say("\nPublished to the live site. GitHub Pages usually updates within a minute or two "
+        "(hard refresh, or use a private window, to see it).")
 
 
 if __name__ == "__main__":
