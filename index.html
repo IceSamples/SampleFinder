@@ -113,7 +113,11 @@
     .table-scroll { overflow: auto; padding: 0 16px 16px; }
 
     /* --- Shared table / control styles --- */
-    .grid { display: grid; grid-template-columns: repeat(7, minmax(0,1fr)); gap: var(--gap); }
+    .grid { display: grid; grid-template-columns: repeat(6, minmax(0,1fr)); gap: var(--gap); }
+    .grid select { min-width: 0; width: 100%; }
+    .grid > .actions-row { grid-column: 1 / -1; flex-direction: row; align-items: center; margin-top: 4px; }
+    .actions-row .spacer { flex: 1; }
+    @media (max-width: 860px) { .grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
     .grid > div { display: flex; flex-direction: column; }
     .col-span-2 { grid-column: span 2; }
 
@@ -145,7 +149,8 @@
 
     .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; border: 1px solid #cbd5e1; font-size: 12px; color: #0f172a; background: #f1f5f9; }
 
-    .foot { display: flex; justify-content: space-between; align-items: center; margin-top: var(--gap); }
+    .foot { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 4px 16px; margin-top: var(--gap); }
+    .foot #count { white-space: nowrap; }
 
     .error { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; padding: 10px 12px; border-radius: 10px; margin-top: 10px; display: none; }
 
@@ -153,8 +158,6 @@
     .core-controls .btn { padding: 6px 10px; }
 
     /* --- Subsamples by core --- */
-    .subs-controls { display: flex; gap: var(--gap); flex-wrap: wrap; align-items: flex-end; }
-    .subs-controls > div { display: flex; flex-direction: column; }
     .subs-info { margin-top: 12px; font-size: 13px; color: #475569; }
     .subs-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
     .subs-chip { cursor: pointer; background: #ffffff; border: 1px solid #cbd5e1; color: #0f172a; font-size: 12px; padding: 3px 10px; }
@@ -269,19 +272,42 @@
                   <option value="consumed">consumed</option>
                 </select>
               </div>
-              <div class="actions" style="align-self:end;">
+              <div>
+                <label for="destination">Show subsamples sent to</label>
+                <select id="destination" name="destination"><option value="">(don't show)</option></select>
+              </div>
+              <div class="actions actions-row">
                 <button id="runBtn" class="btn btn-primary" type="submit">Search</button>
                 <button id="resetBtn" class="btn btn-ghost" type="button">Reset</button>
-              </div>
-              <div class="actions" style="align-self:end; justify-content:flex-end;">
-                <button id="csvBtn" class="btn btn-ghost" type="button" title="Download CSV">Download CSV</button>
+                <span class="spacer"></span>
+                <button id="csvBtn" class="btn btn-ghost" type="button" title="Download the sample results as CSV">Download CSV</button>
               </div>
             </div>
             <div id="err" class="error"></div>
           </form>
           <div class="foot">
             <div id="count" class="muted">0 results</div>
-            <div class="muted">Depth filters include any sample overlapping the window.</div>
+            <div class="muted">Depth filters include any sample overlapping the window. Choosing a destination also lists the matching subsamples.</div>
+          </div>
+        </div>
+
+        <!-- Subsamples (shown when "Show subsamples sent to" is set) -->
+        <div class="card" id="subsCard" style="display:none; margin-bottom:16px;">
+          <h2 style="margin:0 0 2px; font-size:16px;">Subsamples</h2>
+          <div class="muted">For the cores and depth range chosen above. Click a destination to focus on it.</div>
+          <div id="subsInfo" class="subs-info"></div>
+          <div id="subsChips" class="subs-chips"></div>
+          <div class="table-wrap" id="subsTableWrap" style="display:none; margin-top:12px;">
+            <table>
+              <thead>
+                <tr>
+                  <th>Destination</th><th>Subsample ID</th><th>Record ID</th>
+                  <th>Top (m)</th><th>Bottom (m)</th><th>Length (m)</th>
+                  <th>Cut shape</th><th>Purpose</th><th>Date sent</th>
+                </tr>
+              </thead>
+              <tbody id="subsBody"></tbody>
+            </table>
           </div>
         </div>
 
@@ -302,37 +328,6 @@
             </thead>
             <tbody id="tbody"><tr><td colspan="9" class="muted">Run a search…</td></tr></tbody>
           </table>
-        </div>
-
-        <!-- Subsamples by core -->
-        <div class="card" id="subsCard" style="margin-top:16px;">
-          <h2 style="margin:0 0 4px; font-size:16px;">Subsamples by core</h2>
-          <div class="muted" style="margin-bottom:12px;">Choose a core to see which institutions its subsamples were cut for.</div>
-          <div class="subs-controls">
-            <div>
-              <label for="subsCore">Core</label>
-              <select id="subsCore"><option value="">Select a core…</option></select>
-            </div>
-            <div>
-              <label for="subsDest">Destination</label>
-              <select id="subsDest" disabled><option value="">All destinations</option></select>
-            </div>
-          </div>
-          <div id="subsErr" class="error"></div>
-          <div id="subsInfo" class="subs-info"></div>
-          <div id="subsChips" class="subs-chips"></div>
-          <div class="table-wrap" id="subsTableWrap" style="display:none; margin-top:12px;">
-            <table>
-              <thead>
-                <tr>
-                  <th>Destination</th><th>Subsample ID</th><th>Record ID</th>
-                  <th>Top (m)</th><th>Bottom (m)</th><th>Length (m)</th>
-                  <th>Cut shape</th><th>Purpose</th><th>Date sent</th>
-                </tr>
-              </thead>
-              <tbody id="subsBody"></tbody>
-            </table>
-          </div>
         </div>
       </div>
 
@@ -373,8 +368,12 @@
     };
     const subsByRecord = groupBy(DATA.subsamples, 'record_id');
     const subsByCore   = groupBy(DATA.subsamples, 'core_id');
-    const CORE_IDS_WITH_SAMPLES = [...new Set(SAMPLES.map(r => r.core_id))]
-      .sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
+    // Every COLDEX core, plus any core that has sample records. A core with no records yet
+    // (e.g. a recently drilled one) still appears in the list; searching it gives 0 results.
+    const CORE_IDS_FOR_DROPDOWN = [...new Set([
+      ...ALL_CORES.filter(c => c.COLDEX === true).map(c => c.core_code),
+      ...SAMPLES.map(r => r.core_id),
+    ])].sort((a, b) => a.localeCompare(b, 'en', { numeric: true }));
 
     function esc(s) {
       return (s ?? '').toString()
@@ -751,6 +750,7 @@
       lastResults = results;
       countEl.textContent = `${results.length} result${results.length === 1 ? '' : 's'}`;
       renderRows(results);
+      updateSubsamples(coreSet, minDepth, maxDepth);
     }
 
     // === Core list + loader =======================================
@@ -769,12 +769,11 @@
       coreSelect.size = Math.max(6, Math.min(10, coreSelect.options.length));
       coreSelect.disabled = false;
       if (coreCountBadge) coreCountBadge.textContent = codes.length;
-      fillSubsCoreSelect(codes);
     }
 
     function populateCoreDropdown() {
-      if (CORE_IDS_WITH_SAMPLES.length) {
-        fillCoreSelect(CORE_IDS_WITH_SAMPLES);
+      if (CORE_IDS_FOR_DROPDOWN.length) {
+        fillCoreSelect(CORE_IDS_FOR_DROPDOWN);
       } else {
         coreSelect.innerHTML = '<option value="">(No cores found)</option>';
         coreSelect.disabled = false;
@@ -956,82 +955,77 @@
       if (body) body.innerHTML = html;
     }
 
-    // === Subsamples by core ================================================
-    const subsCore  = document.getElementById('subsCore');
-    const subsDest  = document.getElementById('subsDest');
-    const subsErr   = document.getElementById('subsErr');
-    const subsInfo  = document.getElementById('subsInfo');
-    const subsChips = document.getElementById('subsChips');
-    const subsWrap  = document.getElementById('subsTableWrap');
-    const subsBody  = document.getElementById('subsBody');
-    let subsRows = [];
+    // === Subsamples (listed when "Show subsamples sent to" is set) ============
+    const destSelect = document.getElementById('destination');
+    const subsCard   = document.getElementById('subsCard');
+    const subsInfo   = document.getElementById('subsInfo');
+    const subsChips  = document.getElementById('subsChips');
+    const subsWrap   = document.getElementById('subsTableWrap');
+    const subsBody   = document.getElementById('subsBody');
+    const DEST_ANY = '*';
 
     // Destinations are free text in the database ("UCI" vs "uci"), so group case-insensitively.
     const normDest = (d) => { const t = (d ?? '').toString().trim(); return t ? t.toUpperCase() : 'Not recorded'; };
     const sumLen = (rows) => rows.reduce((t, r) => t + (Number(r.length_m) || 0), 0);
 
-    function fillSubsCoreSelect(codes) {
-      const prev = subsCore.value;
-      subsCore.innerHTML = '<option value="">Select a core…</option>' +
-        codes.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
-      if (codes.includes(prev)) subsCore.value = prev;
+    function populateDestinationDropdown() {
+      const names = [...new Set(DATA.subsamples.map(u => normDest(u.destination)))]
+        .sort((a, b) => a.localeCompare(b));
+      destSelect.innerHTML = `<option value="">(don't show)</option><option value="${DEST_ANY}">All destinations</option>` +
+        names.map(n => `<option value="${esc(n)}">${esc(n)}</option>`).join('');
     }
 
-    function resetSubs() {
-      subsRows = [];
-      subsErr.style.display = 'none';
+    function coreLabel(coreSet) {
+      if (coreSet.size === 0) return 'All cores';
+      return coreSet.size <= 3 ? [...coreSet].join(', ') : `${coreSet.size} cores`;
+    }
+
+    function hideSubs() {
+      subsCard.style.display = 'none';
       subsInfo.textContent = '';
       subsChips.innerHTML = '';
+      subsBody.innerHTML = '';
       subsWrap.style.display = 'none';
-      subsDest.innerHTML = '<option value="">All destinations</option>';
-      subsDest.disabled = true;
     }
 
-    function loadSubsamples() {
-      const core = subsCore.value;
-      resetSubs();
-      if (!core) return;
+    function updateSubsamples(coreSet, minDepth, maxDepth) {
+      const choice = destSelect.value;
+      if (choice === '') { hideSubs(); return; }
 
-      const data = subsByCore.get(core) ?? [];
-      subsRows = data
-        .map(r => ({ ...r, dest: normDest(r.destination) }))
+      const base = DATA.subsamples
+        .filter(u => (coreSet.size === 0 || coreSet.has(u.core_id)) && overlaps(u, minDepth, maxDepth))
+        .map(u => ({ ...u, dest: normDest(u.destination) }))
         .sort((a, b) =>
           a.dest.localeCompare(b.dest) ||
           (Number(a.top_depth_m) || 0) - (Number(b.top_depth_m) || 0) ||
           (a.subsample_id || '').localeCompare(b.subsample_id || ''));
 
-      const counts = new Map();
-      for (const r of subsRows) counts.set(r.dest, (counts.get(r.dest) || 0) + 1);
-      subsDest.innerHTML = '<option value="">All destinations</option>' +
-        [...counts].map(([d, n]) => `<option value="${esc(d)}">${esc(d)} (${n})</option>`).join('');
-      subsDest.disabled = counts.size === 0;
-      renderSubs();
-    }
+      const where = coreLabel(coreSet) + (minDepth != null || maxDepth != null ? ' (within the depth range)' : '');
+      subsCard.style.display = '';
 
-    function renderSubs() {
-      const core = subsCore.value;
-      const chosen = subsDest.value;
-      if (subsRows.length === 0) {
-        subsInfo.textContent = core ? `No subsamples recorded for ${core}.` : '';
+      if (base.length === 0) {
+        subsInfo.textContent = `No subsamples recorded for ${where}.`;
         subsChips.innerHTML = '';
         subsWrap.style.display = 'none';
         return;
       }
 
-      // Summary: one chip per destination (click to filter, click again to clear)
+      // Summary: one chip per destination for the whole selection (click to focus, click again for all)
       const groups = new Map();
-      for (const r of subsRows) {
+      for (const r of base) {
         if (!groups.has(r.dest)) groups.set(r.dest, []);
         groups.get(r.dest).push(r);
       }
       subsChips.innerHTML = [...groups].map(([d, rows]) =>
-        `<button type="button" class="pill subs-chip${d === chosen ? ' active' : ''}" data-dest="${esc(d)}">` +
+        `<button type="button" class="pill subs-chip${d === choice ? ' active' : ''}" data-dest="${esc(d)}">` +
         `${esc(d)} · ${rows.length} · ${sumLen(rows).toFixed(2)} m</button>`).join('');
 
-      const shown = chosen ? subsRows.filter(r => r.dest === chosen) : subsRows;
+      const shown = choice === DEST_ANY ? base : base.filter(r => r.dest === choice);
       subsInfo.textContent =
-        `${core}: ${subsRows.length} subsamples across ${groups.size} destination${groups.size === 1 ? '' : 's'}` +
-        (chosen ? ` — showing ${shown.length} for ${chosen}` : '') + '.';
+        `${where}: ${base.length} subsamples across ${groups.size} destination${groups.size === 1 ? '' : 's'}` +
+        (choice === DEST_ANY ? '.' : shown.length ? ` — showing ${shown.length} for ${choice}.` : ` — none were sent to ${choice}.`);
+
+      if (shown.length === 0) { subsWrap.style.display = 'none'; return; }
 
       const cell = (v) => esc(v == null || v === '' ? '—' : v);
       subsBody.innerHTML = shown.map(r => `
@@ -1052,14 +1046,12 @@
       subsWrap.style.display = '';
     }
 
-    subsCore.addEventListener('change', loadSubsamples);
-    subsDest.addEventListener('change', renderSubs);
     subsChips.addEventListener('click', (e) => {
       const chip = e.target.closest('[data-dest]');
       if (!chip) return;
       const d = chip.getAttribute('data-dest');
-      subsDest.value = (subsDest.value === d) ? '' : d;
-      renderSubs();
+      destSelect.value = (destSelect.value === d) ? DEST_ANY : d;
+      runSearch();
     });
     subsBody.addEventListener('click', (e) => {
       const btn = e.target.closest('[data-record-id]');
@@ -1076,6 +1068,7 @@
       lastResults = [];
       renderRows([]);
       countEl.textContent = '0 results';
+      hideSubs();
     });
 
     csvBtn.addEventListener('click', () => downloadCSV(lastResults));
@@ -1092,6 +1085,7 @@
 
     document.addEventListener('DOMContentLoaded', () => {
       populateCoreDropdown();
+      populateDestinationDropdown();
       coreSelect.multiple = true;
     });
   </script>
