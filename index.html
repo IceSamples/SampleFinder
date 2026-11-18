@@ -162,6 +162,20 @@
     select[multiple] { min-width: 260px; }
     input::placeholder { color: #94a3b8; }
 
+    /* --- Sample Finder search box: Core ID on the left, the four other filters stacked on the right --- */
+    .search-card { background: #e8f1fd; border-color: #bfd6f6; }
+    .search-card label { font-size: 15px; font-weight: 700; color: #1e293b; margin-bottom: 6px; letter-spacing: 0; }
+    .form-top { display: flex; flex-wrap: wrap; align-items: stretch; gap: 14px 32px; }
+    .core-col { display: flex; flex-direction: column; width: min-content; }
+    .core-col select#coreId { width: auto; min-width: 0; flex: 1; min-height: 14em; }
+    .fields-col { display: flex; flex-direction: column; gap: 12px; flex: 0 1 340px; min-width: 240px; }
+    .fields-col > div { display: flex; flex-direction: column; }
+    .fields-col input, .fields-col select { width: 100%; min-width: 0; box-sizing: border-box; }
+    .form-actions { display: flex; align-items: center; gap: var(--gap); margin-top: 16px; }
+    .form-actions .spacer { flex: 1; }
+    .search-card .btn-ghost { background: #ffffff; }
+    .search-card .btn-ghost:hover { background: #f1f5f9; }
+
     .actions { display: flex; gap: var(--gap); align-items: center; }
     .btn { cursor: pointer; font-weight: 600; transition: background .15s, color .15s, border-color .15s; }
     .btn-primary { background: #2563eb; border-color: #2563eb; color: #ffffff; }
@@ -293,10 +307,10 @@
 
       <!-- ===== Sample Finder layout (existing search UI) ===== -->
       <div class="finder-layout" id="finderLayout" style="display:none;">
-        <div class="card" style="margin-bottom:16px;">
+        <div class="card search-card" style="margin-bottom:16px;">
           <form id="searchForm">
-            <div class="grid">
-              <div class="col-span-2">
+            <div class="form-top">
+              <div class="core-col">
                 <label for="coreId">Core ID <span id="coreCountBadge" class="pill" style="margin-left:6px;">—</span></label>
                 <select id="coreId" name="coreId" multiple></select>
                 <div class="core-controls">
@@ -306,6 +320,7 @@
                 </div>
               </div>
 
+              <div class="fields-col">
               <div>
                 <label for="minDepth">Min depth (m)</label>
                 <input id="minDepth" name="minDepth" type="number" step="0.01" placeholder="optional" />
@@ -326,7 +341,9 @@
                 <label for="destination">Show subsamples sent to</label>
                 <select id="destination" name="destination"><option value="">(don't show)</option></select>
               </div>
-              <div class="actions actions-row">
+              </div>
+            </div>
+            <div class="form-actions">
                 <button id="runBtn" class="btn btn-primary" type="submit">Search</button>
                 <button id="resetBtn" class="btn btn-ghost" type="button">Reset</button>
                 <span class="spacer"></span>
