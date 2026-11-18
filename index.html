@@ -48,7 +48,9 @@
     .guide-col ul { margin: 0; padding-left: 18px; }
     .guide-col li { margin: 4px 0; }
     /* Little copies of the real tab buttons, so each column is clearly matched to its tab */
-    .guide-tab { display: inline-block; border-radius: 999px; padding: 6px 16px; font-weight: 700; font-size: 15px; border: 2px solid #cbd5e1; background: #fff; color: #475569; }
+    .guide-tab { display: inline-block; border-radius: 999px; padding: 6px 16px; font: inherit; font-weight: 700; font-size: 15px; border: 2px solid #cbd5e1; background: #fff; color: #475569; cursor: pointer; transition: background .15s, border-color .15s; }
+    .guide-tab:hover { border-color: #2563eb; color: #1e3a8a; background: #eff6ff; }
+    .guide-tab.on:hover { background: #1d4ed8; border-color: #1d4ed8; color: #fff; }
     .guide-tab.on { background: #2563eb; border-color: #2563eb; color: #fff; }
     /* Non-clickable look-alikes of the real Record ID / Core ID buttons in the results table */
     .demo-pill { background: none; font-family: system-ui, -apple-system, sans-serif; cursor: default; }
@@ -228,10 +230,10 @@
 
     <details class="card app-header">
       <summary>About this site &amp; how to use it</summary>
-      <p class="guide-lead">This site has <strong>two tabs</strong>. Use the tabs below to switch between them:</p>
+      <p class="guide-lead">This site has <strong>two tabs</strong>. Click a button below, or use the tabs under this box, to jump to one:</p>
       <div class="guide">
         <div class="guide-col">
-          <div class="guide-tab on">Interactive Map</div>
+          <button type="button" class="guide-tab on" data-goto="map" title="Go to the Interactive Map tab">Interactive Map</button>
           <p>Explore where each core was drilled in the Allan Hills.</p>
           <ul>
             <li>Hover over a core on the map to see its ID, year drilled, depth, diameter, age and description.</li>
@@ -240,11 +242,11 @@
           </ul>
         </div>
         <div class="guide-col">
-          <div class="guide-tab">Sample Finder</div>
+          <button type="button" class="guide-tab" data-goto="finder" title="Go to the Sample Finder tab">Sample Finder</button>
           <p>Search the sample database and export what you find.</p>
           <ul>
             <li>Select one or more core IDs (hold Cmd/Ctrl to select several). Optionally set depth filters and a sample status.</li>
-            <li>Click <strong>Search</strong> to list matching samples, or <strong>Download CSV</strong> to export them.</li>
+            <li>Click <strong>Search</strong> to list matching samples. Each list has its own <strong>Download CSV</strong> button in its top-right corner.</li>
             <li>Use <strong>Show subsamples sent to</strong> to see which subsamples went to which institution.</li>
             <li>In the results, click a <span class="pill demo-pill rec">Record ID</span> or <span class="pill demo-pill core">Core ID</span> button for subsample information and core metadata.</li>
           </ul>
@@ -354,7 +356,6 @@
             <div class="form-actions">
                 <button id="runBtn" class="btn btn-primary" type="submit">Search</button>
                 <button id="resetBtn" class="btn btn-ghost" type="button">Reset</button>
-              </div>
             </div>
             </div>
             <div id="err" class="error"></div>
@@ -488,9 +489,15 @@
       });
       mapLayout.style.display    = layout === 'map'    ? '' : 'none';
       finderLayout.style.display = layout === 'finder' ? '' : 'none';
+      document.querySelectorAll('.guide-tab').forEach(g => g.classList.toggle('on', g.dataset.goto === layout));
     }
 
     switcherBtns.forEach(b => b.addEventListener('click', () => setLayout(b.dataset.layout)));
+    // The two buttons inside "About this site": switch tabs, then bring the tab row into view
+    document.querySelectorAll('.guide-tab').forEach(g => g.addEventListener('click', () => {
+      setLayout(g.dataset.goto);
+      document.querySelector('.switcher').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }));
     setLayout('map');
 
     // === Bottom drawer (core metadata table) ===============================
